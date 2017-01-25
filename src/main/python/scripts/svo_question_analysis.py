@@ -19,14 +19,17 @@ class Question:
     def get_q_tokens(self):
         tokens = []
         proc_sents = nltk.sent_tokenize(self.question)
-        proc_words = [nltk.word_tokenize(s) for s in proc_sents]
+        proc_words = [nltk.pos_tag(nltk.word_tokenize(s)) for s in proc_sents]
         for word_list in proc_words:
-            for word in word_list:
-                if word.isalnum():
+            for (word, tag) in word_list:
+                if self.is_nounverb_tag(tag):
                     tokens.append(word.lower())
         return tokens
 
-    ## todo: Implement a method which gets only the noun/verb/(JJ and RB?) tokens
+    def is_nounverb_tag(self, tag):
+        return tag.startswith("NN") | tag.startswith("VB")
+
+    # todo: filter out with nltk stopwords?
 
 
 def read_questions_from_file(filename: str):
@@ -171,7 +174,7 @@ def question_overlap(question: Question, tuples: list, tuple_portion: str):
         # print(t)
         overlap = set(t.split(" ")).intersection(qText)
         if len(overlap) > 0:
-            #print("Overlap:", overlap)
+            print("Overlap:", overlap)
             return True
     return False
 
