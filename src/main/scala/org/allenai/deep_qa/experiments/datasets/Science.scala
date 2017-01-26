@@ -158,7 +158,7 @@ object ScienceFiles {
   val omnibusGradeFourDevSentences_multipleTrueFalse_appendAnswer: JValue =
     makeMultipleTrueFalseQuestionAnswerFile(
       "/efs/data/dlfa/questions/omnibus_4_dev.tsv",
-      "/efs/home/becky/sentences.tsv"
+      "/efs/data/dlfa/processed/omnibus_4_train/multiple_tf/append_answer/sentences.tsv"
     )
 
   val omnibusGradeEightTrainSentences_multipleTrueFalse_appendAnswer: JValue =
@@ -182,7 +182,7 @@ object ScienceFiles {
   val omnibusGradeFourTrainSentences_questionAndAnswer: JValue =
     makeQuestionAnswerFile(
       "/efs/data/dlfa/questions/omnibus_4_train.tsv",
-      "/efs/data/dlfa/processed/omnibus_4_train/question_and_answer/questions.tsv"
+      "/efs/home/rebeccas/questions.tsv"
     )
 
   val omnibusGradeFourDevSentences_questionAndAnswer: JValue =
