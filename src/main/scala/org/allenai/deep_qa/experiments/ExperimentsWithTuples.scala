@@ -16,6 +16,8 @@ object ExperimentsWithTuples {
       ("sentence producer type" -> "sentence to tuple") ~
       ("sentences" ->
         ("sentence producer type" -> "background searcher") ~
+//        ("searcher" -> ScienceCorpora.buscElasticSearchIndex(10)) ~
+//        ("sentences" -> ScienceFiles.omnibusGradeFourTrainSentences_multipleTrueFalse_appendAnswer) ~
         ("searcher" -> ScienceCorpora.buscElasticSearchIndex(10)) ~
         ("sentences" -> ScienceFiles.omnibusGradeFourTrainSentences_multipleTrueFalse_appendAnswer) ~
         ("sentence format" -> "plain sentence")) ~

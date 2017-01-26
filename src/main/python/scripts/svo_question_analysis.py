@@ -1,14 +1,18 @@
+from __future__ import division
 import codecs
 import nltk
+from nltk.corpus import stopwords
 
+stops = set(stopwords.words('english'))
 
 class Question:
     def __init__(self, question, answers, label, index):
         self.question = question
         self.answers = answers
-        self.label = label
+        self.label = int(label)
         self.index = index
-        self.q_tokens = self.get_q_tokens()
+        self.q_tokens = self.get_tokens(self.question)
+        self.a_tokens = [self.get_tokens(a) for a in self.answers]
 
     def display(self):
         print("Q:", self.question)
@@ -16,13 +20,13 @@ class Question:
         print("Label:", self.label)
         print("Index:", self.index)
 
-    def get_q_tokens(self):
+    def get_tokens(self, text):
         tokens = []
-        proc_sents = nltk.sent_tokenize(self.question)
+        proc_sents = nltk.sent_tokenize(text)
         proc_words = [nltk.pos_tag(nltk.word_tokenize(s)) for s in proc_sents]
         for word_list in proc_words:
             for (word, tag) in word_list:
-                if self.is_nounverb_tag(tag):
+                if self.is_nounverb_tag(tag) and word not in stops:
                     tokens.append(word.lower())
         return tokens
 
@@ -165,18 +169,39 @@ def flatten(l):
         return [item for sublist in l for item in sublist]
 
 
-def question_overlap(question: Question, tuples: list, tuple_portion: str):
-    qText = set(question.q_tokens)
-    tupleText = [get_relevant_tuple_portion(t, tuple_portion) for t in tuples]
-    # print("qText:", qText)
-    # print("tupleText:", tupleText)
-    for t in tupleText:
+def getQATokens(question: Question, mode: str):
+    mode_options = {'question': question.q_tokens,  # list of strings
+                    'correct_answer': question.a_tokens[question.label], # list of strings
+                    'incorrect_answers': flatten(question.a_tokens[0:question.label] + question.a_tokens[question.label:len(question.a_tokens)]),
+                    'all_answers': flatten(question.a_tokens[:])}
+    return mode_options[mode]
+
+
+def check_overlap(tokens: set, tuples: list, tuple_portion: str):
+    tuple_texts = [get_relevant_tuple_portion(t, tuple_portion) for t in tuples]
+    for t in tuple_texts:
         # print(t)
-        overlap = set(t.split(" ")).intersection(qText)
+        overlap = set(t.split(" ")).intersection(tokens)
         if len(overlap) > 0:
-            print("Overlap:", overlap)
-            return True
-    return False
+            #print("Overlap:", overlap)
+            return 1
+    return 0
+
+def question_overlap(question: Question, mode: str, tuples: list):
+
+    qa_tokens = set(getQATokens(question, mode))
+
+    # Stats holders
+    in_s = check_overlap(qa_tokens, tuples, "S")
+    in_sv = check_overlap(qa_tokens, tuples, "SV")
+    in_vo = check_overlap(qa_tokens, tuples, "VO")
+    in_o = check_overlap(qa_tokens, tuples, "O")
+
+    return [in_s, in_sv, in_vo, in_o]
+
+
+def format_perc(percent: float):
+    return "%.1f" % (percent*100)
 
 
 def main():
@@ -195,23 +220,91 @@ def main():
     for t in indexed_tuples[qIdx]:
         print("   ", t)
 
-    question_overlap(indexed_questions[qIdx], indexed_tuples[qIdx], "S")
+    question_overlap(indexed_questions[qIdx], "question", indexed_tuples[qIdx])
 
     print("")
     print("------------------------------------")
     print("          Overlap Analysis")
     print("------------------------------------")
-    print(len(indexed_questions))
-    print(len(indexed_tuples))
+    print("num questions:", len(indexed_questions))
+    print("num questions with tuples:", len(indexed_tuples))
+    print("")
 
-    tuple_portion = "O"
+    # Stats holders
+    num_q = len(indexed_questions)
+    num_q_svOverlap = 0
+    num_q_voOverlap = 0
+    num_ca_oOverlap = 0
+    num_ca_sOverlap = 0
+    num_aligned_qSV_caO = 0
+    num_aligned_qVO_caS = 0
+    num_ia_oOverlap = 0
+    num_ia_sOverlap = 0
+    num_aligned_qSV_iaO = 0
+    num_aligned_qVO_iaS = 0
+    num_aligned_strict_qSV_caO = 0
+    num_aligned_strict_qVO_caS = 0
+
+
     for i in range(0, len(indexed_questions)):
         curr_question = indexed_questions[i]
         curr_tuples = indexed_tuples.get(i, [])
-        # if len(indexed_tuples[i]) < 2:
-        #     print("ISSUE: indexed_tuples[{0}]: {1}".format(i, indexed_tuples[i]))
-        # curr_tuples = indexed_tuples[i][1]
-        print("Question {0} has {2} overlap with at least one tuple: {1}".format(i, question_overlap(curr_question, curr_tuples, tuple_portion), tuple_portion))
+        # Question
+        q_in_s, q_in_sv, q_in_vo, q_in_o = question_overlap(curr_question, "question", curr_tuples)
+        num_q_svOverlap += q_in_sv
+        num_q_voOverlap += q_in_vo
+        # Correct answer only
+        ca_in_s, ca_in_sv, ca_in_vo, ca_in_o = question_overlap(curr_question, "correct_answer", curr_tuples)
+        num_ca_oOverlap += ca_in_o
+        num_ca_sOverlap += ca_in_s
+        # Incorrect answers only
+        ia_in_s, ia_in_sv, ia_in_vo, ia_in_o = question_overlap(curr_question, "incorrect_answers", curr_tuples)
+        num_ia_oOverlap += ia_in_o
+        num_ia_sOverlap += ia_in_s
+        # Aligned with structured intuition:
+        # Holds for correct answer (good)
+        if q_in_sv and ca_in_o:
+            num_aligned_qSV_caO += 1
+        if q_in_vo and ca_in_s:
+            num_aligned_qVO_caS += 1
+        # Holds for incorrect answers (badish...)
+        if q_in_sv and ia_in_o:
+            num_aligned_qSV_iaO += 1
+        if q_in_vo and ia_in_s:
+            num_aligned_qVO_iaS += 1
+        # Strict - holds for correct and not for incorrect (awesome!)
+        if q_in_sv and ca_in_o and not ia_in_o:
+            num_aligned_strict_qSV_caO += 1
+        if q_in_vo and ca_in_s and not ia_in_s:
+            num_aligned_strict_qVO_caS += 1
+
+
+
+        #print("Question {0} has the following overlap with at least one tuple: {1}".format(i, [q_in_s, q_in_sv, q_in_vo, q_in_o]))
+
+    print("Percent of questions with question SV lexical overlap: ", format_perc(num_q_svOverlap/num_q))
+    print("Percent of questions with question VO overlap: ", format_perc(num_q_voOverlap / num_q))
+    print("Percent of questions whose correct answers (ca) have O overlap: ", format_perc(num_ca_oOverlap / num_q))
+    print("Percent of questions whose correct answers (ca)  have S overlap: ", format_perc(num_ca_sOverlap / num_q))
+
+    print("--------------------------------")
+    print("Percent of questions with ALIGNED q-SV, ca-O overlap: ", format_perc(num_aligned_qSV_caO / num_q))
+    print("Percent of questions with ALIGNED q-VO, ca-S overlap: ", format_perc(num_aligned_qVO_caS / num_q))
+    # todo: are these disjoint?
+
+    print("--------------------------------")
+    print("Percent of questions with ALIGNED q-SV, incorrect answer (ia) O overlap: ", format_perc(num_aligned_qSV_iaO / num_q))
+    print("Percent of questions with ALIGNED q-VO, ia-S overlap: ", format_perc(num_aligned_qVO_iaS / num_q))
+
+    print("--------------------------------")
+    print("Percent STRICT ALIGNED q-SV, ca-O overlap, not ia-O overlap: ", format_perc(num_aligned_strict_qSV_caO / num_q))
+    print("Percent STRICT ALIGNED q-VO, ca-S overlap, not ia-S overlap: ", format_perc(num_aligned_strict_qVO_caS / num_q))
+
+
+
+# todo: % questions overlap with S, SV, VO, O (and same for answers, and then for correct answer/incorrect answers only?)
+# todo: break down that percent by 100%, 50%, 25% of tuples? or perhaps by 1-5 k tuples?
+# todo: check the "forced" alignment -- i.e. Q with SV and A with O and alternatively Q with VO and A with S (break down for correct and incorrect?)
 
 
 main()
