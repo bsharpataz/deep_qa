@@ -39,7 +39,8 @@ import org.allenai.deep_qa.data.{BackgroundCorpusSearcher, BoostedQuery, Query, 
  */
 trait BackgroundCorpusSearcherStep extends SentenceProducer {
 
-  val baseSearcherParams = Seq("type", "searcher", "sentences", "sentence format") ++ baseParams
+  val baseSearcherParams = Seq("type", "searcher", "sentences", "sentence format", "question " +
+      "boost", "answer boost") ++ baseParams
 
   lazy val searcher = BackgroundCorpusSearcher.create(params \ "searcher")
 
@@ -115,7 +116,7 @@ class DefaultBackgroundCorpusSearcherStep(
           )
           val answerBoost = JsonHelper.extractWithDefault[Float](
             params,
-            "answer boost",
+            "answergit  boost",
             1f
           )
           val qText = fields(1)
