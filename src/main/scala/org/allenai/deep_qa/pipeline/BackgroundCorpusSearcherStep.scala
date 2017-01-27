@@ -119,6 +119,7 @@ class DefaultBackgroundCorpusSearcherStep(
             "answergit  boost",
             1f
           )
+          println (s"Question Boost: $questionBoost   Answer Boost: $answerBoost")
           val qText = fields(1)
           val answers = fields(2).split("###")
           val stringQueries = answers
