@@ -82,6 +82,7 @@ class LuceneBackgroundCorpusSearcher(params: JValue) extends BackgroundCorpusSea
   lazy val settings = Settings.builder().put("cluster.name", esClusterName).build()
   lazy val esClient = TransportClient.builder().settings(settings).build().addTransportAddress(address)
 
+  // todo: Becky this is the block of code to edit to modify the searching...
   override def getBackground(query: String): Seq[String] = {
     val response = esClient.prepareSearch(esIndexName)
       .setTypes("sentence")

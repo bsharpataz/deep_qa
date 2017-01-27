@@ -104,6 +104,7 @@ class DefaultBackgroundCorpusSearcherStep(
         case "question and answer" => {
           val answers = fields(2).split("###")
           val queries = answers.map(fields(1) + " " + _).toSeq
+          // TODO(becky) -- add something here for a boosted query
           (fields(0).toInt, Seq(fields(1)) ++ queries)
         }
       }
