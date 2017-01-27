@@ -116,7 +116,7 @@ class DefaultBackgroundCorpusSearcherStep(
           )
           val answerBoost = JsonHelper.extractWithDefault[Float](
             params,
-            "answergit  boost",
+            "answer  boost",
             1f
           )
           println (s"Question Boost: $questionBoost   Answer Boost: $answerBoost")
