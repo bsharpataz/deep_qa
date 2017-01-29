@@ -206,8 +206,8 @@ def format_perc(percent: float):
 
 def main():
     # Data
-    questions_file = "/Users/rebeccas/data/questions.tsv"
-    tuples_file = "/Users/rebeccas/data/questions_background_as_tuples.tsv"
+    questions_file = "/Users/rebeccas/data/aws-jan27/questions-qaboosted.tsv"
+    tuples_file = "/Users/rebeccas/data/aws-jan27/questions-qaboosted_background_as_tuples.tsv"
 
     # Load the questions and tuples
     indexed_questions = read_questions_from_file(questions_file)
@@ -244,6 +244,7 @@ def main():
     num_aligned_qVO_iaS = 0
     num_aligned_strict_qSV_caO = 0
     num_aligned_strict_qVO_caS = 0
+    num_aligned_both_ways = 0
 
 
     for i in range(0, len(indexed_questions)):
@@ -267,6 +268,9 @@ def main():
             num_aligned_qSV_caO += 1
         if q_in_vo and ca_in_s:
             num_aligned_qVO_caS += 1
+        # Aligned in both directions:
+        if q_in_sv and ca_in_o and q_in_vo and ca_in_s:
+            num_aligned_both_ways += 1
         # Holds for incorrect answers (badish...)
         if q_in_sv and ia_in_o:
             num_aligned_qSV_iaO += 1
@@ -290,6 +294,7 @@ def main():
     print("--------------------------------")
     print("Percent of questions with ALIGNED q-SV, ca-O overlap: ", format_perc(num_aligned_qSV_caO / num_q))
     print("Percent of questions with ALIGNED q-VO, ca-S overlap: ", format_perc(num_aligned_qVO_caS / num_q))
+    print("Percent of questions with correct answer ALIGNMENT in both directions: ", format_perc(num_aligned_both_ways / num_q))
     # todo: are these disjoint?
 
     print("--------------------------------")

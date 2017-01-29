@@ -182,7 +182,19 @@ object ScienceFiles {
   val omnibusGradeFourTrainSentences_questionAndAnswer: JValue =
     makeQuestionAnswerFile(
       "/efs/data/dlfa/questions/omnibus_4_train.tsv",
-      "/efs/home/rebeccas/questions.tsv"
+      "/efs/data/dlfa/processed/omnibus_4_train/question_and_answer/questions.tsv"
+    )
+
+  val omnibusGradeFourTrainSentences_questionAndAnswer_becky: JValue =
+    makeQuestionAnswerFile(
+      "/efs/data/dlfa/questions/omnibus_4_train.tsv",
+      "/efs/home/rebeccas/questionsAns.tsv"
+    )
+
+  val omnibusGradeFourTrainSentences_questionAndAnswerBoosted_becky: JValue =
+    makeQuestionAnswerFile(
+      "/efs/data/dlfa/questions/omnibus_4_train.tsv",
+      "/efs/home/rebeccas/questionsAnsBoosted.tsv"
     )
 
   val omnibusGradeFourDevSentences_questionAndAnswer: JValue =
