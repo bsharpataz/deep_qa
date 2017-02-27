@@ -7,7 +7,7 @@ from ...tensors.backend import apply_feed_forward
 
 
 
-class SlotSimilarityTupleMatch(TupleMatch):
+class SlotSimilarityTupleMatcher(TupleMatch):
     """
     Like other ``TupleMatch`` layers, this layer takes as input two tensors corresponding to two tuples,
     an answer tuple and a background tuple, and calculates the degree to which the background tuple
