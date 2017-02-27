@@ -8,7 +8,7 @@ from .tuple_match import TupleMatch
 
 class WordOverlapTupleMatch(TupleMatch):
     r"""
-    This layer takes as input two tensors cprresponding to two tuples, an answer tuple and a background tuple,
+    This layer takes as input two tensors corresponding to two tuples, an answer tuple and a background tuple,
     and calculates the degree to which the background tuple `entails` the answer tuple.  Entailment is
     determined by generating a set of entailment features from the tuples (the number of
     entailment_features = number of tuple slots), and then passing these features into a shallow NN to get an
@@ -133,7 +133,7 @@ class WordOverlapTupleMatch(TupleMatch):
                                    dtype='float32')
         zeros_excluded_overlap = tuple_words_overlap * tiled_tuple1_mask
 
-        # Find non-padding elememts in tuple1.
+        # Find non-padding elements in tuple1.
         # shape: (batch size, num_slots, num_slot_words_tuple1)
         non_padded_tuple1 = K.cast(K.not_equal(tuple1_input, K.zeros_like(tuple1_input)), 'float32')
         # Count these non-padded elements to know how many words were in each slot of tuple1.
