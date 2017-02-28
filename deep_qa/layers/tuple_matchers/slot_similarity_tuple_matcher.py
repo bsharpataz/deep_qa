@@ -1,13 +1,13 @@
 from keras import backend as K
+from keras.layers import Layer
 from keras import initializations, activations
 from overrides import overrides
 
-from .tuple_match import TupleMatch
 from ...tensors.backend import apply_feed_forward
+from ...tensors.similarity_functions import similarity_functions
 
 
-
-class SlotSimilarityTupleMatcher(TupleMatch):
+class SlotSimilarityTupleMatcher(Layer):
     """
     Like other ``TupleMatch`` layers, this layer takes as input two tensors corresponding to two tuples,
     an answer tuple and a background tuple, and calculates the degree to which the background tuple
@@ -32,7 +32,7 @@ class SlotSimilarityTupleMatcher(TupleMatch):
 
     Parameters
     ----------
-    - similarity_function: ``SimilarityFunction``
+    - similarity_function_choice: str
         The similarity function used to compare the slots of the inputs.
 
     - num_hidden_layers : int, default=1
@@ -54,12 +54,13 @@ class SlotSimilarityTupleMatcher(TupleMatch):
     _____
     This layer is incompatible with the WordsAndCharacters tokenizer.
     """
-    def __init__(self, similarity_function, num_hidden_layers: int=1, hidden_layer_width: int=4,
+    def __init__(self, similarity_function_choice, num_hidden_layers: int=1, hidden_layer_width: int=4,
                  initialization: str='glorot_uniform', hidden_layer_activation: str='tanh',
                  final_activation: str='sigmoid', **kwargs):
         self.input_dim = None
         self.supports_masking = True
-        self.similarity_function = similarity_function
+        self.similarity_function_choice = similarity_function_choice
+        self.similarity_function = similarity_functions[self.similarity_function_choice](name="slot_similarity")
         # Parameters for the shallow neural network
         self.num_hidden_layers = num_hidden_layers
         self.hidden_layer_width = hidden_layer_width
@@ -68,11 +69,12 @@ class SlotSimilarityTupleMatcher(TupleMatch):
         self.final_activation = final_activation
         self.hidden_layer_weights = []
         self.score_layer = None
-        super(SlotSimilarityTupleMatch, self).__init__(**kwargs)
+        super(SlotSimilarityTupleMatcher, self).__init__(**kwargs)
 
     def get_config(self):
-        base_config = super(SlotSimilarityTupleMatch, self).get_config()
-        config = {'num_hidden_layers': self.num_hidden_layers,
+        base_config = super(SlotSimilarityTupleMatcher, self).get_config()
+        config = {'similarity_function_choice': self.similarity_function_choice,
+                  'num_hidden_layers': self.num_hidden_layers,
                   'hidden_layer_width': self.hidden_layer_width,
                   'initialization': self.hidden_layer_init,
                   'hidden_layer_activation': self.hidden_layer_activation,
@@ -80,8 +82,12 @@ class SlotSimilarityTupleMatcher(TupleMatch):
         config.update(base_config)
         return config
 
+    def get_output_shape_for(self, input_shapes):
+        # pylint: disable=unused-argument
+        return (input_shapes[0][0], 1)
+
     def build(self, input_shape):
-        super(SlotSimilarityTupleMatch, self).build(input_shape)
+        super(SlotSimilarityTupleMatcher, self).build(input_shape)
 
         # Add the weights for the hidden layers.
         hidden_layer_input_dim = input_shape[0][1]
@@ -98,13 +104,15 @@ class SlotSimilarityTupleMatcher(TupleMatch):
 
     @overrides
     def compute_mask(self, input, input_mask=None):  # pylint: disable=unused-argument,redefined-builtin
-        # Here, input_mask is ignored, because the input is plain word tokens. To determine the returned mask,
-        # we want to see if either of the inputs is all padding (i.e. the mask would be all 0s), if so, then
-        # the whole tuple_match should be masked, so we would return a 0, otherwise we return a 1.  As such,
-        # the shape of the returned mask is (batch size, 1).
-        input1, input2 = input
-        mask1 = K.cast(K.any(input1), 'int32')
-        mask2 = K.cast(K.any(input2), 'int32')
+        # Here, we want to see if either of the inputs is all padding (i.e. the mask would be all 0s).
+        # If so, then the whole tuple_match should be masked, so we would return a 0, otherwise we
+        # return a 1.  As such, the shape of the returned mask is (batch size, 1).
+        if input_mask is None or input_mask == [None, None]:
+            return None
+        # Each of the two masks in input_mask are of shape: (batch size, num_slots)
+        mask1, mask2 = input_mask
+        mask1 = K.cast(K.any(mask1), 'int32')
+        mask2 = K.cast(K.any(mask2), 'int32')
         return (mask1 + mask2) >= 2
 
     def call(self, x, mask=None):
@@ -123,12 +131,11 @@ class SlotSimilarityTupleMatcher(TupleMatch):
         # Make a masked version of similarities which remomves similarities from slots which were all
         # padding in either tuple.
         # shape: (batch size, num_slots)
-        # TODO(becky): does this need to be a copy?
         masked_similarities = similarities
         if tuple1_mask is not None:
-            masked_similarities *= tuple1_mask
+            masked_similarities *= K.cast(tuple1_mask, "float32")
         if tuple2_mask is not None:
-            masked_similarities *= tuple2_mask
+            masked_similarities *= K.cast(tuple2_mask, "float32")
 
         # shape: (batch size, hidden_layer_width)
         raw_entailment = apply_feed_forward(masked_similarities, self.hidden_layer_weights,

@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 from ...layers.wrappers.encoder_wrapper import EncoderWrapper
 from ...common.params import get_choice_with_default
+from .slot_similarity_tuple_matcher import SlotSimilarityTupleMatcher
 
 
 class EncodedTupleMatcher:
@@ -28,7 +29,7 @@ class EncodedTupleMatcher:
         if tuple_matcher_params is None:
             tuple_matcher_params = {}
         tuple_matcher_choice = get_choice_with_default(tuple_matcher_params,
-                                                       "type",
+                                                       "encoded_match_type",
                                                        list(encoded_tuple_matchers.keys()))
         self.tuple_matcher = encoded_tuple_matchers[tuple_matcher_choice](**tuple_matcher_params)
 
@@ -53,3 +54,4 @@ class EncodedTupleMatcher:
 
 # The first item added here will be used as the default in some cases.
 encoded_tuple_matchers = OrderedDict()  # pylint: disable=invalid-name
+encoded_tuple_matchers['slot_similarity'] = SlotSimilarityTupleMatcher

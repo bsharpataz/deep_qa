@@ -11,7 +11,7 @@ from scipy.stats import logistic
 from deep_qa.layers.tuple_matchers.word_overlap_tuple_matcher import WordOverlapTupleMatcher
 
 
-class TestWordOverlapTupleMatch(TestCase):
+class TestWordOverlapTupleMatcher(TestCase):
 
     def setUp(self):
         num_slots = 3
