@@ -59,14 +59,7 @@ class SlotSimilarityTupleMatcher(Layer):
     def __init__(self, similarity_function: Dict[str, Any]={}, num_hidden_layers: int=1,
                  hidden_layer_width: int=4, initialization: str='glorot_uniform',
                  hidden_layer_activation: str='tanh', final_activation: str='sigmoid', **kwargs):
-        self.input_dim = None
         self.supports_masking = True
-
-        sim_function_choice = get_choice_with_default(similarity_function,
-                                                      'type',
-                                                      list(similarity_functions.keys()))
-        similarity_function['name'] = self.name + '_similarity_function'
-        self.similarity_function = similarity_functions[sim_function_choice](**similarity_function)
         # Parameters for the shallow neural network
         self.num_hidden_layers = num_hidden_layers
         self.hidden_layer_width = hidden_layer_width
@@ -76,6 +69,11 @@ class SlotSimilarityTupleMatcher(Layer):
         self.hidden_layer_weights = []
         self.score_layer = None
         super(SlotSimilarityTupleMatcher, self).__init__(**kwargs)
+        sim_function_choice = get_choice_with_default(similarity_function,
+                                                      'type',
+                                                      list(similarity_functions.keys()))
+        similarity_function['name'] = self.name + '_similarity_function'
+        self.similarity_function = similarity_functions[sim_function_choice](**similarity_function)
 
     def get_config(self):
         base_config = super(SlotSimilarityTupleMatcher, self).get_config()
