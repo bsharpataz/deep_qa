@@ -9,7 +9,6 @@
     "pretrained_embeddings_file": "/efs/data/dlfa/glove/glove.840B.300d.txt.gz",
     "project_embeddings": false,
     "fine_tune_embeddings": false,
-    // check the docs for more info
     "knowledge_selector": {
         "type": "dot_product"
     },
