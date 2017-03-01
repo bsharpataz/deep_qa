@@ -56,7 +56,7 @@ class SlotSimilarityTupleMatcher(Layer):
         The activation of the NN output layer
 
     """
-    def __init__(self, similarity_function: Dict[str, Any]={}, num_hidden_layers: int=1,
+    def __init__(self, similarity_function: Dict[str, Any]=None, num_hidden_layers: int=1,
                  hidden_layer_width: int=4, initialization: str='glorot_uniform',
                  hidden_layer_activation: str='tanh', final_activation: str='sigmoid', **kwargs):
         self.supports_masking = True
@@ -118,7 +118,6 @@ class SlotSimilarityTupleMatcher(Layer):
         return K.any(mask1) * K.any(mask2)
 
     def get_output_mask_shape_for(self, input_shape):  # pylint: disable=no-self-use
-        print("!!!!!!!!!!!!!!!!!!\n!!!!!!!!!!!!!!!!!!!!!!!\nSS:", input_shape)
         # input_shape is [(batch_size, num_slots, embed_dimension), (batch_size, num_slots, encoding_dim)]
         mask_shape = (input_shape[0][0], 1)
         return mask_shape

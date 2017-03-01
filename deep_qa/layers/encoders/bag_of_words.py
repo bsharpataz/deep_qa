@@ -25,8 +25,6 @@ class BOWEncoder(Layer):
 
     @overrides
     def call(self, x, mask=None):
-        print("BOW encoder __call__, x =", x)
-        print("BOW encoder __call__, mask =", mask)
         # pylint: disable=redefined-variable-type
         if mask is None:
             return K.mean(x, axis=1)

@@ -37,24 +37,20 @@ class EncodedTupleMatcher:
     def __call__(self, inputs):
         # pylint: disable=protected-access
         tuple1, tuple2 = inputs
-        print("tuple1, tuple2:", tuple1, tuple2)
         embedded_tuple1 = self.text_trainer._embed_input(tuple1)
-        print("embedded_tuple1:", embedded_tuple1)
         embedded_tuple2 = self.text_trainer._embed_input(tuple2)
-        print("embedded_tuple2:", embedded_tuple2 )
         tuple_encoder = self.text_trainer._get_encoder(name="tuples",
                                                        fallback_behavior="use default encoder")
         # We use separate encoders here in case the tuples have different shapes (e.g., different
         # numbers of slots, or number of words per slot).
-        tuple1_encoder = EncoderWrapper(EncoderWrapper(EncoderWrapper(EncoderWrapper(tuple_encoder), name="tuple1_encoder")))
-        tuple2_encoder = EncoderWrapper(EncoderWrapper(EncoderWrapper(EncoderWrapper(tuple_encoder), name="tuple2_encoder")))
+        tuple1_encoder = EncoderWrapper(EncoderWrapper(EncoderWrapper(EncoderWrapper(tuple_encoder),
+                                                                      name="tuple1_encoder")))
+        tuple2_encoder = EncoderWrapper(EncoderWrapper(EncoderWrapper(EncoderWrapper(tuple_encoder),
+                                                                      name="tuple2_encoder")))
         encoded_tuple1 = tuple1_encoder(embedded_tuple1)
         encoded_tuple2 = tuple2_encoder(embedded_tuple2)
-        print("encoded_tuple1:", encoded_tuple1)
-        print("encoded_tuple2:", encoded_tuple2)
-        # The three EncoderWrappers wrap around the first three dimensions of the inputs:
+        # The three TimeDistributedWithMask wrap around the first three dimensions of the inputs:
         # num_options, num_answer_tuple, and num_background_tuples.
-        #match_layer = EncoderWrapper(EncoderWrapper(EncoderWrapper(self.tuple_matcher)))
         match_layer = TimeDistributedWithMask(TimeDistributedWithMask(TimeDistributedWithMask(self.tuple_matcher)))
         return match_layer([encoded_tuple1, encoded_tuple2])
 
