@@ -14,5 +14,4 @@ class OutputMask(Layer):
         super(OutputMask, self).__init__(**kwargs)
 
     def call(self, x, mask=None):  # pylint: disable=unused-argument
-        print("OUTPUTMASK, mask=", mask)
         return mask
