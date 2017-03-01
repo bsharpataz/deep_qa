@@ -115,11 +115,11 @@ class SlotSimilarityTupleMatcher(Layer):
         # Here, we want to see if either of the inputs is all padding (i.e. the mask would be all 0s).
         # If so, then the whole tuple_match should be masked, so we would return a 0, otherwise we
         # return a 1.  As such, the shape of the returned mask is (batch size, 1).
-        if input_mask is None or input_mask == [None, None]:
+        if input_mask == [None, None]:
             return None
         # Each of the two masks in input_mask are of shape: (batch size, num_slots)
         mask1, mask2 = input_mask
-        return K.any(mask1) * K.any(mask2)
+        return K.any(mask1, axis=-1, keepdims=True) * K.any(mask2, axis=-1, keepdims=True)
 
     def get_output_mask_shape_for(self, input_shape):  # pylint: disable=no-self-use
         # input_shape is [(batch_size, num_slots, embed_dimension), (batch_size, num_slots, encoding_dim)]
