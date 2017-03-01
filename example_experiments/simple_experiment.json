@@ -6,6 +6,10 @@
             "type": "bow"
         }
     },
+    "pretrained_embeddings_file": "filename to gzipped glove vectors get from efs/data/dlfa/glove.840B.300d.txt.gz",
+    "project_embeddings": false,
+    "fine_tune_embeddings": false,
+    // check the docs for more info
     "knowledge_selector": {
         "type": "dot_product"
     },

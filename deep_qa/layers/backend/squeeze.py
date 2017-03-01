@@ -26,6 +26,11 @@ class Squeeze(Layer):
         # pylint: disable=unused-argument
         if mask is None:
             return None
+        # If the mask doesn't need squeezing, just return it.
+        # TODO(becky): better to check if the last mask dim == 1?
+        if K.ndim(inputs) == K.ndim(mask) + 1:
+            return mask
+        # Else, squeeze the mask
         return K.squeeze(mask, axis=self.axis)
 
     @overrides

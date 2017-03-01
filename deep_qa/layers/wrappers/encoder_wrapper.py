@@ -23,3 +23,4 @@ class EncoderWrapper(TimeDistributed):
         else:
             # An output bit is 0 only if the  bits corresponding to all input words are 0.
             return K.any(input_mask, axis=-1)
+        

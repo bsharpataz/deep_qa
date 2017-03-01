@@ -71,7 +71,7 @@ class TupleInferenceModel(TextTrainer):
             match_layer = tuple_matcher_class(**tuple_matcher_params)
             self.tuple_matcher = TimeDistributed(TimeDistributed(TimeDistributed(match_layer)))
         else:
-            self.tuple_matcher(self, tuple_matcher_params)
+            self.tuple_matcher = tuple_matcher_class(self, tuple_matcher_params)
         super(TupleInferenceModel, self).__init__(params)
 
         self.name = 'TupleInferenceModel'
@@ -159,6 +159,7 @@ class TupleInferenceModel(TextTrainer):
         # Find the matches between the question and background tuples.
         # shape: (batch size, num_options, num_question_tuples, num_background_tuples, 1)
         matches = self.tuple_matcher([tiled_question, tiled_background])
+        print("matches before squeeze:", matches)
         # Squeeze to get rid of the last dim of length 1.
         # shape: (batch size, num_options, num_question_tuples, num_background_tuples)
         matches = Squeeze(axis=-1)(matches)

@@ -23,11 +23,17 @@
                         "hidden_layer_activation": "tanh",
                         "final_activation": "sigmoid"
     },
+    "encoder": {
+        "default": {
+            "type": "bow"
+        }
+    },
     "noisy_or_param_init": "uniform",
     "num_question_tuples": 30,
     "num_background_tuples": 50,
     "num_tuple_slots": 4,
     "word_sequence_length": 5,
     "num_answer_options": 4,
-    "train_files": ["/Users/rebeccas/data/brittleness/omni4_train_brittleness.tuples.labeled"]
+    //"train_files": ["/Users/rebeccas/data/brittleness/omni4_train_brittleness.tuples.labeled"]
+    "train_files": ["/Users/rebeccas/data/brittleness/head20.omni4_train_brittleness.tuples.labeled"]
 }

@@ -6,6 +6,7 @@ from numpy.testing import assert_array_almost_equal
 from keras.layers import Input, Lambda
 from keras.models import Model
 
+
 from deep_qa.layers.wrappers.time_distributed import TimeDistributed
 
 class TestTimeDistributed(TestCase):
