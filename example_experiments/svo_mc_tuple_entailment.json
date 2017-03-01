@@ -15,7 +15,7 @@
     "patience": 50,
     "num_epochs": 50,
     "tuple_matcher": {
-                        "type": "encoded_match",
+                        "type": "encoded_matcher",
                         "encoded_match_type": "slot_similarity",
                         "similarity_function_choice": "dot_product",
                         "num_hidden_layers": 1,

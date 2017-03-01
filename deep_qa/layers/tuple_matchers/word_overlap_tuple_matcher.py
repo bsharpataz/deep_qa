@@ -48,14 +48,13 @@ class WordOverlapTupleMatcher(Layer):
         The activation of the NN output layer
 
     Notes
-    _____
+    -----
     This layer is incompatible with the WordsAndCharacters tokenizer.
     """
 
     def __init__(self, num_hidden_layers: int=1, hidden_layer_width: int=4,
                  initialization: str='glorot_uniform', hidden_layer_activation: str='tanh',
                  final_activation: str='sigmoid', **kwargs):
-        self.input_dim = None
         self.supports_masking = True
         # Parameters for the shallow neural network
         self.num_hidden_layers = num_hidden_layers

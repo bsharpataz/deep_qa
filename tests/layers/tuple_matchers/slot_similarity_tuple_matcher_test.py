@@ -24,11 +24,9 @@ class TestSlotSimilarityTupleMatcher(TestCase):
         self.hidden_layer_activation = 'linear'
 
         # tuple1 shape: (batch size, num_slots, embed_dimension)
-        self.tuple1 = numpy.asarray([[numpy.random.random(embed_dimension) for _ in range(num_slots)]],
-                                    dtype="float32")
+        self.tuple1 = numpy.random.rand(1, num_slots, embed_dimension)
         # tuple2 shape: (batch size, num_slots, embed_dimension)
-        self.tuple2 = numpy.asarray([[numpy.random.random(embed_dimension) for _ in range(num_slots)]],
-                                    dtype="float32")
+        self.tuple2 = numpy.random.rand(1, num_slots, embed_dimension)
 
 
     def test_general_case(self):
@@ -52,7 +50,6 @@ class TestSlotSimilarityTupleMatcher(TestCase):
         dense1_activation = numpy.dot(K.eval(cosine_similarities), dense_hidden_weights)
         final_score = numpy.dot(dense1_activation, score_weights)
         desired_result = logistic.cdf(final_score)
-        print(desired_result)
         result = model.predict([self.tuple1, self.tuple2])
         assert_array_almost_equal(result, desired_result)
 
@@ -95,8 +92,6 @@ class TestSlotSimilarityTupleMatcher(TestCase):
         output = match_layer([masked_tuple1, masked_tuple2])
         mask_model = Model([self.tuple1_input, self.tuple2_input], output)
 
-        # Testing masked case
-        # Testing general unmasked case.
         similarity_function = CosineSimilarity(name="cosine_similarity")
         cosine_similarities = similarity_function.compute_similarity(K.variable(self.tuple1), K.variable(self.tuple2))
         mask2 = K.variable(numpy.asarray([[1, 0, 1]], dtype='float32'))

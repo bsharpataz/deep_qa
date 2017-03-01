@@ -25,4 +25,4 @@ from .encoded_tuple_matcher import EncodedTupleMatcher
 # The first item added here will be used as the default in some cases.
 tuple_matchers = OrderedDict() # pylint: disable=invalid-name
 tuple_matchers['word_overlap'] = WordOverlapTupleMatcher
-tuple_matchers['encoded_match'] = EncodedTupleMatcher
+tuple_matchers['encoded_matcher'] = EncodedTupleMatcher

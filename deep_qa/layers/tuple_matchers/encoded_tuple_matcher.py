@@ -30,7 +30,7 @@ class EncodedTupleMatcher:
         if tuple_matcher_params is None:
             tuple_matcher_params = {}
         tuple_matcher_choice = get_choice_with_default(tuple_matcher_params,
-                                                       "encoded_match_type",
+                                                       "encoded_matcher_type",
                                                        list(encoded_tuple_matchers.keys()))
         self.tuple_matcher = encoded_tuple_matchers[tuple_matcher_choice](**tuple_matcher_params)
 

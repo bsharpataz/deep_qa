@@ -1,9 +1,12 @@
+from typing import Any, Dict
+
 from keras import backend as K
 from keras.layers import Layer
 from keras import initializations, activations
 from overrides import overrides
 
 from ...tensors.backend import apply_feed_forward
+from ...common.params import get_choice_with_default
 from ...tensors.similarity_functions import similarity_functions
 
 
@@ -11,19 +14,19 @@ class SlotSimilarityTupleMatcher(Layer):
     """
     Like other ``TupleMatch`` layers, this layer takes as input two tensors corresponding to two tuples,
     an answer tuple and a background tuple, and calculates the degree to which the background tuple
-    `entails` the answer tuple.  In this layer, each input slot is represented as a dense embedding, so
-    to determine entailment we find the cosine similarity between these embedded slot representations,
+    `entails` the answer tuple.  In this layer, each input slot is represented as a dense encoding, so
+    to determine entailment we find the cosine similarity between these encoded slot representations,
     i.e., the similarity between the first slot in each, then the second slot in each, etc.
     This generates a set of similarity features equal to the number of slots in the tuples, which are
     then fed to a shallow NN with output of size one.  The output of this NN is considered to be the
     entailment score for the two tuples.
 
     Inputs:
-        - tuple_1_input (the answer tuple), shape ``(batch size, num_slots, embed_dimensions)``.  There also
+        - tuple_1_input (the answer tuple), shape ``(batch size, num_slots, encoding_dim)``.  There also
           needs to be a corresponding mask of shape (batch size, num_slots) (or None) that indicates whether
           a given slot was all padding.
 
-        - tuple_2_input (the background_tuple), shape ``(batch size, num_slots, embed_dimensions)``,
+        - tuple_2_input (the background_tuple), shape ``(batch size, num_slots, encoding_dim)``,
           and again, there needs to be a corresponding mask of shape (batch size, num_slots) (or None)
           that indicates whether a given slot was all padding.
 
@@ -32,8 +35,10 @@ class SlotSimilarityTupleMatcher(Layer):
 
     Parameters
     ----------
-    - similarity_function_choice: str
-        The similarity function used to compare the slots of the inputs.
+    - similarity_function_params: Dict[str, Any], default={}
+        These parameters get passed to a similarity function (see
+        :mod:`deep_qa.tensors.similarity_functions` for more info on what's acceptable).  The default
+        similarity function with no parameters is a simple dot product.
 
     - num_hidden_layers : int, default=1
         Number of hidden layers in the shallow NN.
@@ -50,17 +55,18 @@ class SlotSimilarityTupleMatcher(Layer):
     - final_activation : string, default='sigmoid'
         The activation of the NN output layer
 
-    Notes
-    _____
-    This layer is incompatible with the WordsAndCharacters tokenizer.
     """
-    def __init__(self, similarity_function_choice, num_hidden_layers: int=1, hidden_layer_width: int=4,
-                 initialization: str='glorot_uniform', hidden_layer_activation: str='tanh',
-                 final_activation: str='sigmoid', **kwargs):
+    def __init__(self, similarity_function: Dict[str, Any]={}, num_hidden_layers: int=1,
+                 hidden_layer_width: int=4, initialization: str='glorot_uniform',
+                 hidden_layer_activation: str='tanh', final_activation: str='sigmoid', **kwargs):
         self.input_dim = None
         self.supports_masking = True
-        self.similarity_function_choice = similarity_function_choice
-        self.similarity_function = similarity_functions[self.similarity_function_choice](name="slot_similarity")
+
+        sim_function_choice = get_choice_with_default(similarity_function,
+                                                      'type',
+                                                      list(similarity_functions.keys()))
+        similarity_function['name'] = self.name + '_similarity_function'
+        self.similarity_function = similarity_functions[sim_function_choice](**similarity_function)
         # Parameters for the shallow neural network
         self.num_hidden_layers = num_hidden_layers
         self.hidden_layer_width = hidden_layer_width
@@ -115,13 +121,13 @@ class SlotSimilarityTupleMatcher(Layer):
 
     def get_output_mask_shape_for(self, input_shape):  # pylint: disable=no-self-use
         print("!!!!!!!!!!!!!!!!!!\n!!!!!!!!!!!!!!!!!!!!!!!\nSS:", input_shape)
-        # input_shape is [(batch_size, num_slots, embed_dimension), (batch_size, num_slots, embed_dimension)]
+        # input_shape is [(batch_size, num_slots, embed_dimension), (batch_size, num_slots, encoding_dim)]
         mask_shape = (input_shape[0][0], 1)
         return mask_shape
 
     def call(self, x, mask=None):
-        tuple1_input, tuple2_input = x      # tuple1 shape: (batch size, num_slots, embed_dimension)
-                                            # tuple2 shape: (batch size, num_slots, embed_dimension)
+        tuple1_input, tuple2_input = x      # tuple1 shape: (batch size, num_slots, encoding_dim)
+                                            # tuple2 shape: (batch size, num_slots, encoding_dim)
         # Check that the tuples have the same number of slots.
         assert K.int_shape(tuple1_input)[1] == K.int_shape(tuple2_input)[1]
 
@@ -130,7 +136,6 @@ class SlotSimilarityTupleMatcher(Layer):
         similarities = self.similarity_function.compute_similarity(tuple1_input, tuple2_input)
 
         # Remove any similarities if one of the corresponding slots was all padding.
-        # TODO(becky): need this to take a mask for each input of None or shape: (batch size, num_slots)
         tuple1_mask, tuple2_mask = mask
         # Make a masked version of similarities which remomves similarities from slots which were all
         # padding in either tuple.
