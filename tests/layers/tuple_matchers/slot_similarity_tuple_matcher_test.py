@@ -49,6 +49,7 @@ class TestSlotSimilarityTupleMatcher(TestCase):
         # Desired_overlap gets fed into the inner NN.
         dense1_activation = numpy.dot(K.eval(cosine_similarities), dense_hidden_weights)
         final_score = numpy.dot(dense1_activation, score_weights)
+        # Apply the final sigmoid activation function.
         desired_result = logistic.cdf(final_score)
         result = model.predict([self.tuple1, self.tuple2])
         assert_array_almost_equal(result, desired_result)

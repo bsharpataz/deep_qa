@@ -52,6 +52,7 @@ class TestWordOverlapTupleMatcher(TestCase):
         # Desired_overlap gets fed into the inner NN.
         dense1_activation = np.dot(desired_overlap, dense_hidden_weights)
         final_score = np.dot(dense1_activation, score_weights)
+        # Apply the final sigmoid activation function.
         desired_result = logistic.cdf(final_score)
         print(desired_result)
         result = model.predict([self.tuple1, self.tuple2])
