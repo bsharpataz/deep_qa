@@ -414,9 +414,6 @@ class TextTrainer(Trainer):
               ``self.encoder_params["default"]``.  This effectively changes the ``name`` parameter
               to ``"default"`` when the given ``name`` is not in ``self.encoder_params``.
         """
-        print("in TextTrainer: self.encoder_layers =", self.encoder_layers)
-        print("name =", name)
-        print("self.encoder_params =", self.encoder_params)
         if fallback_behavior is None:
             fallback_behavior = self.encoder_fallback_behavior
         if name in self.encoder_layers:
@@ -443,7 +440,6 @@ class TextTrainer(Trainer):
             encoder_layer_name = name + "_encoder"
             new_encoder = self._get_new_encoder(params, encoder_layer_name)
             self.encoder_layers[name] = new_encoder
-            print("at end: self.encoder_layers =", self.encoder_layers)
         return self.encoder_layers[name]
 
     def _get_new_encoder(self, params: Dict[str, Any], name: str):
