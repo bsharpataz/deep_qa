@@ -2,6 +2,7 @@ from keras import backend as K
 from keras.layers import Layer
 from keras.constraints import Constraint
 from keras.regularizers import L1L2Regularizer
+from keras.activations import sigmoid
 from overrides import overrides
 
 class BetweenZeroAndOne(Constraint):

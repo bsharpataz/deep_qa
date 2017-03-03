@@ -9,7 +9,7 @@ from deep_qa.layers.tuple_matchers import tuple_matchers
 from ...layers.attention.masked_softmax import MaskedSoftmax
 from ...layers.backend.repeat import Repeat
 from ...layers.backend.squeeze import Squeeze
-from ...layers.noisy_or import NoisyOr
+from ...layers.noisy_or import NoisyOr, BetweenZeroAndOne
 from ...layers.wrappers.time_distributed import TimeDistributed
 from ...training.models import DeepQaModel
 from ...training.text_trainer import TextTrainer
@@ -162,13 +162,17 @@ class TupleInferenceModel(TextTrainer):
 
         # Find the probability that any given question tuple is entailed by the given background tuples.
         # shape: (batch size, num_options, num_question_tuples)
-        combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init, name="noisy_or_1")
+        combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init,
+                                              #noise_param_constraint=BetweenZeroAndOne(),
+                                              name="noisy_or_1")
         qi_probabilities = combine_background_evidence(matches)
 
         # Find the probability that any given option is correct, given the entailement scores of each of its
         # question tuples given the set of background tuples.
         # shape: (batch size, num_options)
-        combine_question_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init, name="noisy_or_2")
+        combine_question_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init,
+                                            #noise_param_constraint=BetweenZeroAndOne(),
+                                            name="noisy_or_2")
         options_probabilities = combine_question_evidence(qi_probabilities)
 
         # Softmax over the options to choose the best one.
