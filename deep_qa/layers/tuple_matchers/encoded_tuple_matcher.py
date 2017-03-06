@@ -37,8 +37,8 @@ class EncodedTupleMatcher:
     def __call__(self, inputs):
         # pylint: disable=protected-access
         tuple1, tuple2 = inputs
-        embedded_tuple1 = self.text_trainer._embed_input(tuple1)
-        embedded_tuple2 = self.text_trainer._embed_input(tuple2)
+        embedded_tuple1 = self.text_trainer._embed_input(tuple1, embedding_name="embedding")
+        embedded_tuple2 = self.text_trainer._embed_input(tuple2, embedding_name="embedding")
         tuple_encoder = self.text_trainer._get_encoder(name="tuples",
                                                        fallback_behavior="use default encoder")
         # We use separate encoders here in case the tuples have different shapes (e.g., different

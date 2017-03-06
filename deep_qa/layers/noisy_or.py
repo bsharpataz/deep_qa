@@ -87,7 +87,7 @@ class NoisyOr(Layer):
         if mask is not None:
             probabilities *= K.cast(mask, dtype="float32")
 
-        noisy_probs = self.noise_parameter * probabilities
+        noisy_probs = sigmoid(self.noise_parameter) * probabilities
 
         # shape: (batch size, ..., num_probs, ...)
         noisy_probs = 1.0 - noisy_probs

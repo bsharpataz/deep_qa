@@ -55,7 +55,10 @@ class StopwordFilter(WordFilter):
                               'versus', 'via', 'was', 'we', 'were', 'what', 'when', 'where',
                               'which', 'who', 'why', 'will', 'with', 'within', 'without', 'you',
                               'your', 'yours', 'yourself', 'yourselves', ",", '.', ':', '!', ';',
-                              "'", '"', '&', '$', '#', '@', '(', ')', '?'])
+                              "'", '"', '&', '$', '#', '@', '(', ')', '?',
+                              "has", "have", "can", 'did', "does", "could", "would", "had", "should",
+                              "might", "may", "very", "better", "so"
+                              ])
 
     @overrides
     def filter_words(self, words: List[str]) -> List[str]:
