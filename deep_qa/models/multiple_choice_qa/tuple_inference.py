@@ -9,6 +9,7 @@ from deep_qa.layers.tuple_matchers import tuple_matchers
 from ...layers.attention.masked_softmax import MaskedSoftmax
 from ...layers.backend.repeat import Repeat
 from ...layers.backend.squeeze import Squeeze
+from ...layers.backend.max import Max
 from ...layers.noisy_or import NoisyOr, BetweenZeroAndOne
 from ...layers.wrappers.time_distributed import TimeDistributed
 from ...training.models import DeepQaModel
@@ -162,9 +163,10 @@ class TupleInferenceModel(TextTrainer):
 
         # Find the probability that any given question tuple is entailed by the given background tuples.
         # shape: (batch size, num_options, num_question_tuples)
-        combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init,
-                                              #noise_param_constraint=BetweenZeroAndOne(),
-                                              name="noisy_or_1")
+        # combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init,
+        #                                       #noise_param_constraint=BetweenZeroAndOne(),
+        #                                       name="noisy_or_1")
+        combine_background_evidence = Max(axis=-1)
         qi_probabilities = combine_background_evidence(matches)
 
         # Find the probability that any given option is correct, given the entailement scores of each of its
