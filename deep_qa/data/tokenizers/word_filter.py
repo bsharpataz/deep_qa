@@ -57,11 +57,14 @@ class StopwordFilter(WordFilter):
                               'your', 'yours', 'yourself', 'yourselves', ",", '.', ':', '!', ';',
                               "'", '"', '&', '$', '#', '@', '(', ')', '?',
                               "has", "have", "can", 'did', "does", "could", "would", "had", "should",
-                              "might", "may", "very", "better", "so"
+                              "might", "may", "very", "better", "so", "", " ",
+                              "most", "all", "many", "few", "some", "good", "bad", "thing"
                               ])
 
     @overrides
     def filter_words(self, words: List[str]) -> List[str]:
+        #if " " in words or "" in words:
+        #print("space in words!")
         return [word for word in words if word not in self.stopwords]
 
 

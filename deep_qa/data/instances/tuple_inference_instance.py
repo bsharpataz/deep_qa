@@ -22,11 +22,9 @@ class TextTuple:
 
     def display_string(self):
         # NOTE: not currently displaying location, time, and source info.
-        return ("TextTuple( [\n\tsubj: {0} \n\tverb: {1} \n\tobjects: {2} " +
-                "\n\tcontext: {3}\n] )").format(self.subject,
-                                                self.verb,
-                                                ", ".join(self.objects),
-                                                self.context)
+        return ("(S: {0}, V: {1}, O: {2}, C: {3})").format(self.subject, self.verb,
+                                                                    ", ".join(self.objects),
+                                                                    self.context[:100])
 
     def to_text_list(self, object_handling: str="collapse", include_context: bool=True):
         '''
@@ -134,14 +132,20 @@ class TupleInferenceInstance(TextInstance):
         super(TupleInferenceInstance, self).__init__(label, index)
         self.answer_tuples = answer_tuples
         self.background_tuples = background_tuples
+        #print(self.display_string())
 
     def display_string(self):
-        to_return = 'MultipleTrueFalseTuplesWithBackgroundInstance: \n'
+        to_return = "-----------------------------------------------\n"
+        to_return += 'MultipleTrueFalseTuplesWithBackgroundInstance: \n'
         to_return += "  Answer Candidates: \n"
         for answer_index in range(len(self.answer_tuples)):
-            string_answer_tuples = [str(a_tuple) for a_tuple in self.answer_tuples[answer_index]]
-            to_return += "\t [{0}] {1}\n".format(answer_index, ", \n".join(string_answer_tuples))
-        to_return += "\n  Background Tuples: \n " + ", \n".join(str(self.background_tuples))
+            string_answer_tuples = [a_tuple.display_string() for a_tuple in self.answer_tuples[answer_index][0:10]]
+            if answer_index == self.label:
+                to_return += "\t**"
+            else:
+                to_return += "\t"
+            to_return += " [{0}] {1}\n".format(answer_index, ", ".join(string_answer_tuples))
+        to_return += "  Background Tuples: \n " + ", ".join([bgt.display_string() for bgt in self.background_tuples[0:30]])
         return to_return
 
     @overrides

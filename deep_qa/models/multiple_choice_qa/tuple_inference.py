@@ -1,4 +1,5 @@
 from typing import Dict, Any
+import numpy
 
 from keras.layers import Input, Layer
 from overrides import overrides
@@ -118,6 +119,37 @@ class TupleInferenceModel(TextTrainer):
         pass
 
     @overrides
+    def _instance_debug_output(self, instance: TupleInferenceInstance, outputs: Dict[str, numpy.array]) -> str:
+        result = "=============================\n"
+        result += "Instance: %s\n" % instance.display_string()
+        result += "Label: %s\n" % instance.label
+        result += "TupleMatch output: \n"
+        tm_output = outputs.get('timedistributed_3', None)
+        if tm_output is not None:
+            for option in range(self.num_options):
+                result += "  option {0}: {1}\n".format(option, str(tm_output[option]))
+        result += "\n"
+        result += "NoisyOr 1 output: \n"
+        noisy_or_1_output = outputs.get('noisyor_1', None)
+        if noisy_or_1_output is not None:
+            for option in range(self.num_options):
+                result += "  option {0}: {1}\n".format(option, str(noisy_or_1_output[option]))
+        result += "\n"
+        result += "NoisyOr 2 output: \n"
+        noisy_or_2_output = outputs.get('noisyor_2', None)
+        if noisy_or_2_output is not None:
+            for option in range(self.num_options):
+                result += "  option {0}: {1}\n".format(option, str(noisy_or_2_output[option]))
+        result += "\n"
+        #result += "NoisyOr 2 output: %S\n" % str(outputs.get('noisyor_2', None))
+        final_score = outputs.get("maskedsoftmax_1", None)
+        if final_score is not None:
+            result += "Assigned score: %s\n" % str(final_score)
+
+        #result += self._render_layer_outputs(instance, outputs)
+        return result
+
+    @overrides
     def _build_model(self):
         r"""
         The basic outline of the model is that the question input, :math:`\mathcal{A}` (which consists of the
@@ -163,10 +195,10 @@ class TupleInferenceModel(TextTrainer):
 
         # Find the probability that any given question tuple is entailed by the given background tuples.
         # shape: (batch size, num_options, num_question_tuples)
-        # combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init,
-        #                                       #noise_param_constraint=BetweenZeroAndOne(),
-        #                                       name="noisy_or_1")
-        combine_background_evidence = Max(axis=-1)
+        combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init,
+                                              #noise_param_constraint=BetweenZeroAndOne(),
+                                              name="noisy_or_1")
+        # combine_background_evidence = Max(axis=-1)
         qi_probabilities = combine_background_evidence(matches)
 
         # Find the probability that any given option is correct, given the entailement scores of each of its
