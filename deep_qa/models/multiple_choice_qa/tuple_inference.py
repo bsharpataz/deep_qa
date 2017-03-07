@@ -124,8 +124,9 @@ class TupleInferenceModel(TextTrainer):
         result += "Instance: %s\n" % instance.display_string()
         result += "Label: %s\n" % instance.label
         result += "TupleMatch output: \n"
-        tm_output = outputs.get('timedistributed_3', None)
-        if tm_output is not None:
+        #tm_output = outputs.get('timedistributed_3', None)
+        tm_output = [output for layer_name, output in outputs.items() if layer_name.startswith('timedistributed')]
+        if tm_output:
             for option in range(self.num_options):
                 result += "  option {0}: {1}\n".format(option, str(tm_output[option]))
         result += "\n"
