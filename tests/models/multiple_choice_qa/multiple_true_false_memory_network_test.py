@@ -1,37 +1,46 @@
 # pylint: disable=no-self-use,invalid-name
-
-from unittest import TestCase, mock
-import os
-import shutil
+from unittest import mock
 
 from numpy.testing.utils import assert_allclose
 
 from deep_qa.models.multiple_choice_qa.multiple_true_false_memory_network import MultipleTrueFalseMemoryNetwork
-from ...common.constants import TEST_DIR
-from ...common.models import get_model
-from ...common.models import write_multiple_true_false_memory_network_files
+from ...common.test_case import DeepQaTestCase
 from ...common.test_markers import requires_tensorflow
 
 
-class TestMultipleTrueFalseMemoryNetwork(TestCase):
+class TestMultipleTrueFalseMemoryNetwork(DeepQaTestCase):
     # pylint: disable=protected-access
 
     def setUp(self):
-        os.makedirs(TEST_DIR, exist_ok=True)
-        write_multiple_true_false_memory_network_files()
-
-    def tearDown(self):
-        shutil.rmtree(TEST_DIR)
+        super(TestMultipleTrueFalseMemoryNetwork, self).setUp()
+        self.write_multiple_true_false_memory_network_files()
 
     def test_model_trains_and_loads_correctly(self):
-        model = get_model(MultipleTrueFalseMemoryNetwork, {'save_models': True})
+        model = self.get_model(MultipleTrueFalseMemoryNetwork, {'save_models': True})
         model.train()
 
-        loaded_model = get_model(MultipleTrueFalseMemoryNetwork)
+        loaded_model = self.get_model(MultipleTrueFalseMemoryNetwork)
         loaded_model.load_model()
 
         assert_allclose(model.model.predict(model.__dict__["validation_input"]),
                         loaded_model.model.predict(model.__dict__["validation_input"]))
+
+        # now fit both models on some more data, and ensure that we get the same results.
+        self.write_additional_multiple_true_false_memory_network_files()
+        # pylint: disable=unused-variable
+        train_data, val_data = loaded_model.prepare_data(loaded_model.train_files,
+                                                         loaded_model.max_training_instances,
+                                                         loaded_model.validation_files,
+                                                         update_data_indexer=False)
+        _, train_input, train_labels = train_data
+        # _, validation_input, _ = val_data
+        model.model.fit(train_input, train_labels, shuffle=False, nb_epoch=1)
+        loaded_model.model.fit(train_input, train_labels, shuffle=False, nb_epoch=1)
+
+        # verify that original model and the loaded model predict the same outputs
+        # TODO(matt): fix the randomness that occurs here.
+        # assert_allclose(model.model.predict(validation_input),
+        #                 loaded_model.model.predict(validation_input))
 
     @mock.patch.object(MultipleTrueFalseMemoryNetwork, '_output_debug_info')
     def test_padding_works_correctly(self, _output_debug_info):
@@ -48,7 +57,7 @@ class TestMultipleTrueFalseMemoryNetwork(TestCase):
                                 ],
                         }
                 }
-        model = get_model(MultipleTrueFalseMemoryNetwork, args)
+        model = self.get_model(MultipleTrueFalseMemoryNetwork, args)
 
         def new_debug(output_dict, epoch):  # pylint: disable=unused-argument
             # We're going to check in here that the attentions and so on are properly masked.  In
@@ -87,7 +96,7 @@ class TestMultipleTrueFalseMemoryNetwork(TestCase):
                                 ],
                         }
                 }
-        model = get_model(MultipleTrueFalseMemoryNetwork, args)
+        model = self.get_model(MultipleTrueFalseMemoryNetwork, args)
 
         def new_debug(output_dict, epoch):  # pylint: disable=unused-argument
             # We're going to check two things in here: that the shape of combined word embedding is
@@ -100,8 +109,6 @@ class TestMultipleTrueFalseMemoryNetwork(TestCase):
             assert len(word_embeddings) == 1
             assert word_embeddings[0].shape == (4, 3, 1, 4)
             word_masks = output_dict['masks']['combined_word_embedding_for_background_input'][0]
-            print(word_masks)
-            print(word_masks.shape)
             # Zeros are added to background sentences _from the right_.
             assert word_masks[0, 0, 0] == 1
             assert word_masks[0, 1, 0] == 1
@@ -121,5 +128,5 @@ class TestMultipleTrueFalseMemoryNetwork(TestCase):
     @requires_tensorflow
     def test_train_does_not_crash_using_adaptive_recurrence(self):
         args = {'recurrence_mode': {'type': 'adaptive'}}
-        model = get_model(MultipleTrueFalseMemoryNetwork, args)
+        model = self.get_model(MultipleTrueFalseMemoryNetwork, args)
         model.train()

@@ -1,35 +1,23 @@
 # pylint: disable=no-self-use,invalid-name
-
-from unittest import TestCase, mock
-import os
-import shutil
+from unittest import mock
 
 import numpy
 from numpy.testing import assert_allclose
+
 from deep_qa.common.params import get_choice_with_default
 from deep_qa.layers.encoders import encoders
 from deep_qa.models.text_classification.true_false_model import TrueFalseModel
 from deep_qa.models.multiple_choice_qa.question_answer_similarity import QuestionAnswerSimilarity
-from ..common.constants import TEST_DIR
-from ..common.constants import PRETRAINED_VECTORS_GZIP
-from ..common.models import get_model
-from ..common.models import write_question_answer_memory_network_files
-from ..common.models import write_true_false_model_files, write_pretrained_vector_files
-from ..common.test_markers import requires_tensorflow
+from ..common.test_case import DeepQaTestCase
+from ..common.test_markers import requires_tensorflow, requires_theano
 
 
-class TestTextTrainer(TestCase):
+class TestTextTrainer(DeepQaTestCase):
     # pylint: disable=protected-access
 
-    def setUp(self):
-        os.makedirs(TEST_DIR, exist_ok=True)
-        write_true_false_model_files()
-
-    def tearDown(self):
-        shutil.rmtree(TEST_DIR)
-
     def test_get_encoder_works_without_params(self):
-        model = get_model(TrueFalseModel, {'encoder': {}})
+        self.write_true_false_model_files()
+        model = self.get_model(TrueFalseModel, {'encoder': {}})
         encoder = model._get_encoder()
         encoder_type = get_choice_with_default({}, "type", list(encoders.keys()))
         expected_encoder = encoders[encoder_type](**{})
@@ -37,7 +25,7 @@ class TestTextTrainer(TestCase):
 
     @mock.patch.object(TrueFalseModel, '_output_debug_info')
     def test_padding_works_correctly(self, _output_debug_info):
-        write_true_false_model_files()
+        self.write_true_false_model_files()
         args = {
                 'embedding_size': 4,
                 'tokenizer': {'type': 'words and characters'},
@@ -52,7 +40,7 @@ class TestTextTrainer(TestCase):
                                 ],
                         }
                 }
-        model = get_model(TrueFalseModel, args)
+        model = self.get_model(TrueFalseModel, args)
 
         def new_debug(output_dict, epoch):  # pylint: disable=unused-argument
             # We're going to check two things in here: that the shape of combined word embedding is
@@ -83,7 +71,7 @@ class TestTextTrainer(TestCase):
 
     @mock.patch.object(QuestionAnswerSimilarity, '_output_debug_info')
     def test_words_and_characters_works_with_matrices(self, _output_debug_info):
-        write_question_answer_memory_network_files()
+        self.write_question_answer_memory_network_files()
         args = {
                 'embedding_size': 4,
                 'tokenizer': {'type': 'words and characters'},
@@ -97,7 +85,7 @@ class TestTextTrainer(TestCase):
                                 ],
                         }
                 }
-        model = get_model(QuestionAnswerSimilarity, args)
+        model = self.get_model(QuestionAnswerSimilarity, args)
 
         def new_debug(output_dict, epoch):  # pylint: disable=unused-argument
             # We're going to check two things in here: that the shape of combined word embedding is
@@ -135,32 +123,72 @@ class TestTextTrainer(TestCase):
                 'tokenizer': {'type': 'words and characters'},
                 'show_summary_with_masking_info': True,
         }
-        write_true_false_model_files()
-        model = get_model(TrueFalseModel, args)
+        self.write_true_false_model_files()
+        model = self.get_model(TrueFalseModel, args)
         model.train()
 
         # load the model that we serialized
-        loaded_model = get_model(TrueFalseModel, args)
+        loaded_model = self.get_model(TrueFalseModel, args)
         loaded_model.load_model()
 
         # verify that original model and the loaded model predict the same outputs
         assert_allclose(model.model.predict(model.__dict__["validation_input"]),
                         loaded_model.model.predict(model.__dict__["validation_input"]))
 
+
+    @requires_theano
+    def test_load_model_and_fit(self):
+        # train a model and serialize it.
+        args = {
+                'embedding_size': 4,
+                'save_models': True,
+                'tokenizer': {'type': 'words and characters'},
+                'show_summary_with_masking_info': True,
+        }
+        self.write_true_false_model_files()
+        model = self.get_model(TrueFalseModel, args)
+        model.train()
+
+        # load the model that we serialized
+        loaded_model = self.get_model(TrueFalseModel, args)
+        loaded_model.load_model()
+
+        # verify that original model and the loaded model predict the same outputs
+        assert_allclose(model.model.predict(model.__dict__["validation_input"]),
+                        loaded_model.model.predict(model.__dict__["validation_input"]))
+
+        # now fit both models on some more data, and ensure that we get the same results.
+        self.write_additional_true_false_model_files()
+        # pylint: disable=unused-variable
+        train_data, val_data = loaded_model.prepare_data(loaded_model.train_files,
+                                                         loaded_model.max_training_instances,
+                                                         loaded_model.validation_files,
+                                                         update_data_indexer=False)
+        _, train_input, train_labels = train_data
+        # _, validation_input, _ = val_data
+        model.model.fit(train_input, train_labels, shuffle=False, nb_epoch=1)
+        loaded_model.model.fit(train_input, train_labels, shuffle=False, nb_epoch=1)
+
+        # verify that original model and the loaded model predict the same outputs
+        # TODO(matt): fix the randomness that occurs here.
+        # assert_allclose(model.model.predict(validation_input),
+        #                 loaded_model.model.predict(validation_input))
+
+
     @requires_tensorflow
     def test_tensorboard_logs_does_not_crash(self):
-        write_true_false_model_files()
-        model = get_model(TrueFalseModel, {'tensorboard_log': TEST_DIR})
+        self.write_true_false_model_files()
+        model = self.get_model(TrueFalseModel, {'tensorboard_log': self.TEST_DIR})
         model.train()
 
     def test_pretrained_embeddings_works_correctly(self):
-        write_true_false_model_files()
-        write_pretrained_vector_files()
+        self.write_true_false_model_files()
+        self.write_pretrained_vector_files()
         args = {
                 'embedding_size': 8,
-                'pretrained_embeddings_file': PRETRAINED_VECTORS_GZIP,
+                'pretrained_embeddings_file': self.PRETRAINED_VECTORS_GZIP,
                 'fine_tune_embeddings': False,
                 'project_embeddings': False,
                 }
-        model = get_model(TrueFalseModel, args)
+        model = self.get_model(TrueFalseModel, args)
         model.train()

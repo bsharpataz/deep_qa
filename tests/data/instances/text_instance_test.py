@@ -1,18 +1,20 @@
 # pylint: disable=no-self-use,invalid-name
-
-from unittest import TestCase
-
 from deep_qa.data.data_indexer import DataIndexer
 from deep_qa.data.instances.instance import TextInstance
 from deep_qa.data.tokenizers import tokenizers
 from deep_qa.data.instances.true_false_instance import IndexedTrueFalseInstance, TrueFalseInstance
 
+from ...common.test_case import DeepQaTestCase
 
-class TestTextInstance:
+class TestTextInstance(DeepQaTestCase):
     """
     The point of this test class is to test the TextEncoder used by the TextInstance, to be sure
     that we get what we expect when using character encoders, or word-and-character encoders.
     """
+    def tearDown(self):
+        super(TestTextInstance, self).tearDown()
+        TextInstance.tokenizer = tokenizers['words']({})
+
     def test_words_tokenizes_the_sentence_correctly(self):
         t = TrueFalseInstance("This is a sentence.", None)
         assert t.words() == {'words': ['this', 'is', 'a', 'sentence', '.']}
@@ -21,9 +23,8 @@ class TestTextInstance:
                                             'e', 'n', 't', 'e', 'n', 'c', 'e', '.']}
         TextInstance.tokenizer = tokenizers['words and characters']({})
         assert t.words() == {'words': ['this', 'is', 'a', 'sentence', '.'],
-                             'characters': ['T', 'h', 'i', 's', ' ', 'i', 's', ' ', 'a', ' ', 's',
-                                            'e', 'n', 't', 'e', 'n', 'c', 'e', '.']}
-        TextInstance.tokenizer = tokenizers['words']({})
+                             'characters': ['t', 'h', 'i', 's', 'i', 's', 'a', 's', 'e', 'n', 't',
+                                            'e', 'n', 'c', 'e', '.']}
 
     def test_to_indexed_instance_converts_correctly(self):
         data_indexer = DataIndexer()
@@ -49,11 +50,9 @@ class TestTextInstance:
         assert instance.word_indices == [[a_word_index, a_index],
                                          [sentence_index, s_index, e_index, n_index, t_index,
                                           e_index, n_index, c_index, e_index]]
-        TextInstance.tokenizer = tokenizers['words']({})
 
 
-class TestIndexedInstance(TestCase):
-
+class TestIndexedInstance(DeepQaTestCase):
     def test_get_lengths_works_with_words_and_characters(self):
         instance = IndexedTrueFalseInstance([[1, 2], [3, 1, 2]], True)
         assert instance.get_lengths() == {'word_sequence_length': 2, 'word_character_length': 3}
