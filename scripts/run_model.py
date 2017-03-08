@@ -9,6 +9,8 @@ import random
 import numpy
 random.seed(13370)
 numpy.random.seed(1337)  # pylint: disable=no-member
+# random.seed(13310)
+# numpy.random.seed(1331)  # pylint: disable=no-member
 
 # pylint: disable=wrong-import-position
 

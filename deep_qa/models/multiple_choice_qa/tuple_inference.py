@@ -13,6 +13,8 @@ from ...layers.backend.squeeze import Squeeze
 from ...layers.backend.max import Max
 from ...layers.noisy_or import NoisyOr, BetweenZeroAndOne
 from ...layers.wrappers.time_distributed import TimeDistributed
+from ...layers.wrappers.time_distributed_with_mask import TimeDistributedWithMask
+
 from ...training.models import DeepQaModel
 from ...training.text_trainer import TextTrainer
 from ...common.params import get_choice_with_default
@@ -71,7 +73,7 @@ class TupleInferenceModel(TextTrainer):
             # These TimeDistributed wrappers correspond to distributing across each of num_options,
             # num_question_tuples, and num_background_tuples.
             match_layer = tuple_matcher_class(**tuple_matcher_params)
-            self.tuple_matcher = TimeDistributed(TimeDistributed(TimeDistributed(match_layer)))
+            self.tuple_matcher = TimeDistributedWithMask(TimeDistributedWithMask(TimeDistributedWithMask(match_layer)))
         else:
             self.tuple_matcher = tuple_matcher_class(self, tuple_matcher_params)
         super(TupleInferenceModel, self).__init__(params)
@@ -200,7 +202,7 @@ class TupleInferenceModel(TextTrainer):
         combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init,
                                               #noise_param_constraint=BetweenZeroAndOne(),
                                               name="noisy_or_1")
-        # combine_background_evidence = Max(axis=-1)
+        # combine_background_evidence = Max(axis=-1, name="noisy_or_1")
         qi_probabilities = combine_background_evidence(matches)
 
         # Find the probability that any given option is correct, given the entailement scores of each of its
