@@ -2,6 +2,7 @@ from keras import backend as K
 from keras import initializations, activations
 from keras.layers import Layer
 from overrides import overrides
+import tensorflow
 
 from ...tensors.backend import switch, apply_feed_forward
 
@@ -87,10 +88,22 @@ class WordOverlapTupleMatcher(Layer):
                                            name='%s_hiddenlayer_%d' % (self.name, i))
             self.hidden_layer_weights.append(hidden_layer)
             hidden_layer_input_dim = self.hidden_layer_width
+        # for slot 0 weights
+        for i in range(input_shape[0][1]):
+            for j in range(self.hidden_layer_width):
+                weight = hidden_layer[i][j]
+                tensorflow.summary.scalar(name="slot{0}_hidden-node{1}".format(i, j), tensor=weight)
+        # first_row = hidden_layer[0, :]
+        # for weight_idx in range(self.hidden_layer_width):
+        #     weight = first_row[weight_idx]
+        #     tensorflow.summary.scalar(name="slot0_wt_{0}".format(weight_idx), tensor=weight)
         # Add the weights for the final layer.
         self.score_layer = self.add_weight(shape=(self.hidden_layer_width, 1),
                                            initializer=initializations.get(self.hidden_layer_init),
                                            name='%s_score' % self.name)
+        for k in range(self.hidden_layer_width):
+            weight_1 = self.score_layer[k][0]
+            tensorflow.summary.scalar(name="hidden-node{0}_score-node".format(k), tensor=weight_1)
 
     def get_output_shape_for(self, input_shapes):
         # pylint: disable=unused-argument
