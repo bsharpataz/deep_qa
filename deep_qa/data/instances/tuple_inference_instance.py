@@ -197,7 +197,8 @@ class TupleInferenceInstance(TextInstance):
             Option 1:
                 [question index][tab][all question+answer tuples][tab][background tuples][tab][label]
             Option 2:
-                same as option 1, but preceeded by [question text][tab]
+                same as option 1, but [question text][tab] comes immediately after the question index,
+                following the tab. Currently, the question text is not used.
         The question+answer tuples are formatted as:
             [a_1-tuple_1]$$$...$$$[a_1-tuple_n]###...###[a+_m-tuple_1]$$$...$$$[a_m-tuple_p]
         such that ``$$$`` serves as the tuple delimiter and ``###`` serves as the answer candidate
@@ -223,7 +224,7 @@ class TupleInferenceInstance(TextInstance):
         """
         fields = line.split("\t")
         if len(fields) == 5:
-            index, question_text, answers_string, background_string, label = fields #pylint: disable=unused-variable
+            index, _, answers_string, background_string, label = fields
             index = int(index)
         elif len(fields) == 4:
             index, answers_string, background_string, label = fields
