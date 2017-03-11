@@ -223,7 +223,7 @@ class TupleInferenceInstance(TextInstance):
         """
         fields = line.split("\t")
         if len(fields) == 5:
-            question_text, index, answers_string, background_string, label = fields
+            index, question_text, answers_string, background_string, label = fields #pylint: disable=unused-variable
             index = int(index)
         elif len(fields) == 4:
             index, answers_string, background_string, label = fields
