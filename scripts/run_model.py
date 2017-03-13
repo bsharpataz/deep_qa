@@ -7,10 +7,10 @@ import sys
 # how arguments work (e.g., loading a file), then we can think about setting this as a parameter.
 import random
 import numpy
-#random.seed(13370)
-#numpy.random.seed(1337)  # pylint: disable=no-member
-random.seed(13340)
-numpy.random.seed(1334)  # pylint: disable=no-member
+random.seed(13370)
+numpy.random.seed(1337)  # pylint: disable=no-member
+# random.seed(13340)
+# numpy.random.seed(1334)  # pylint: disable=no-member
 
 # pylint: disable=wrong-import-position
 
