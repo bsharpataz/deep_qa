@@ -207,9 +207,9 @@ class BidirectionalAttentionFlow(TextTrainer):
 
     @overrides
     def _set_max_lengths(self, max_lengths: Dict[str, int]):
-        # Adding this because we're bypassing word_sequence_length in our model, but TextTrainer
+        # Adding this because we're bypassing num_sentence_words in our model, but TextTrainer
         # expects it.
-        max_lengths['word_sequence_length'] = None
+        max_lengths['num_sentence_words'] = None
         super(BidirectionalAttentionFlow, self)._set_max_lengths(max_lengths)
         self.num_passage_words = max_lengths['num_passage_words']
         self.num_question_words = max_lengths['num_question_words']
@@ -219,11 +219,11 @@ class BidirectionalAttentionFlow(TextTrainer):
         self.num_question_words = self.model.get_input_shape_at(0)[0][1]
         self.num_passage_words = self.model.get_input_shape_at(0)[1][1]
         # We need to pass this slice of the passage input shape to the superclass
-        # mainly to set self.max_word_length. The decision of whether to pass
+        # mainly to set self.num_word_characters. The decision of whether to pass
         # the passage input or the question input is arbitrary, as the
         # two word lengths are guaranteed to be the same and BiDAF ignores
-        # self.max_sentence_length.
-        self.set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][2:])
+        # self.num_sentence_words.
+        self.set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][1:])
 
     @classmethod
     def _get_custom_objects(cls):
@@ -235,3 +235,43 @@ class BidirectionalAttentionFlow(TextTrainer):
         custom_objects["Repeat"] = Repeat
         custom_objects["WeightedSum"] = WeightedSum
         return custom_objects
+
+    @overrides
+    def score_instance(self, instance: CharacterSpanInstance):
+        inputs, _ = self._prepare_instance(instance)
+        try:
+            span_begin_probs, span_end_probs = self.model.predict(inputs)
+            span_indices = self.get_best_span(span_begin_probs,
+                                              span_end_probs)
+            return span_indices
+        except:
+            print('Inputs were: ' + str(inputs))
+            raise
+
+    @staticmethod
+    def get_best_span(span_begin_probs, span_end_probs):
+        if len(span_begin_probs.shape) > 2 or len(span_end_probs.shape) > 2:
+            raise ValueError("Input shapes must be (X,) or (1,X)")
+        if len(span_begin_probs.shape) == 2:
+            assert span_begin_probs.shape[0] == 1, "2D input must have an initial dimension of 1"
+            span_begin_probs = span_begin_probs.flatten()
+        if len(span_end_probs.shape) == 2:
+            assert span_end_probs.shape[0] == 1, "2D input must have an initial dimension of 1"
+            span_end_probs = span_end_probs.flatten()
+        max_span_probability = 0
+        best_word_span = (0, 1)
+        begin_span_argmax = 0
+        for j, _ in enumerate(span_begin_probs):
+            val1 = span_begin_probs[begin_span_argmax]
+            if val1 < span_begin_probs[j]:
+                val1 = span_begin_probs[j]
+                begin_span_argmax = j
+
+            val2 = span_end_probs[j]
+            if val1 * val2 > max_span_probability:
+                best_word_span = (begin_span_argmax, j)
+                max_span_probability = val1 * val2
+        # Note that this function returns an exclusive span
+        # end, while we assume that it was trained in an
+        # inclusive span end setting.
+        return (best_word_span[0], best_word_span[1] + 1)
