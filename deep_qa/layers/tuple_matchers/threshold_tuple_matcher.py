@@ -92,6 +92,7 @@ class ThresholdTupleMatcher(Layer):
         self.similarity_function = similarity_functions[sim_function_choice](**similarity_function)
 
     def get_config(self):
+
         base_config = super(ThresholdTupleMatcher, self).get_config()
         config = {'similarity_function': self.similarity_function_params,
                   'num_hidden_layers': self.num_hidden_layers,
@@ -101,6 +102,40 @@ class ThresholdTupleMatcher(Layer):
                   'final_activation': self.final_activation}
         config.update(base_config)
         return config
+
+    def custom_init(shape, initial_value, name=None, dim_ordering='th'):
+        return K.ones(shape, name=name) * initial_value
+
+    @overrides
+    def add_weight(self, shape, initializer, name=None,
+                   trainable=True,
+                   regularizer=None,
+                   constraint=None):
+        """Adds a weight variable to the layer.
+
+        # Arguments
+            shape: The shape tuple of the weight.
+            initializer: An Initializer instance (callable).
+            trainable: A boolean, whether the weight should
+                be trained via backprop or not (assuming
+                that the layer itself is also trainable).
+            regularizer: An optional Regularizer instance.
+        """
+        if initializer.startswith("custom"):
+            initial_value = float(initializer.split("_")[1])
+            weight = self.custom_init(shape, initial_value=initial_value, name=name)
+        else:
+            initializer = initializations.get(initializer)
+            weight = initializer(shape, name=name)
+        if regularizer is not None:
+            self.add_loss(regularizer(weight))
+        if constraint is not None:
+            self.constraints[weight] = constraint
+        if trainable:
+            self._trainable_weights.append(weight)
+        else:
+            self._non_trainable_weights.append(weight)
+        return weight
 
     def build(self, input_shape):
         super(ThresholdTupleMatcher, self).build(input_shape)
