@@ -81,6 +81,8 @@ class ThresholdTupleMatcher(Layer):
         self.score_layer = None
         # This thresholded matcher includes a similarity threshold which is learned during training.
         self.similarity_threshold = None
+        # Also included is a weight which is learned which serves to shape the sigmoid used below
+        self.sigmoid_weight = None
         super(ThresholdTupleMatcher, self).__init__(**kwargs)
         self.similarity_function_params = deepcopy(similarity_function)
         if similarity_function is None:
@@ -110,6 +112,13 @@ class ThresholdTupleMatcher(Layer):
                                                     initializer=self.hidden_layer_init,
                                                     regularizer=L1L2Regularizer(l2=0.001),
                                                     trainable=True)
+        # Add the parameter for the similarity threshold
+        self.sigmoid_weight = self.add_weight(shape=(),
+                                              name=self.name + '_sigmoid_weight',
+                                              #initializer=self.hidden_layer_init,
+                                              initializer="one",
+                                              regularizer=L1L2Regularizer(l2=0.001),
+                                              trainable=True)
 
         # Add the weights for the hidden layers.
         hidden_layer_input_dim = input_shape[0][1]
@@ -176,7 +185,11 @@ class ThresholdTupleMatcher(Layer):
         # Currently, we only consider SUBJ_t1 <--> SUBJ_t2 etc similarities, not across slot types.
         # shape: (batch size, num_slots, num_slot_words_tuple1, num_slot_words_tuple2)
         # TODO(becky): this isn't actually differentiable, is it?  fix?? don't care??
-        tuple_words_overlap = K.cast(tuple_word_similarities >= self.similarity_threshold, "float32")
+        # tuple_words_overlap = K.cast(tuple_word_similarities >= self.similarity_threshold, "float32")
+        similarity_score_differences = tuple_word_similarities - self.similarity_threshold
+        print("shape of similarity_score_differences:", K.int_shape(similarity_score_differences))
+        tuple_words_overlap = K.sigmoid(self.sigmoid_weight * similarity_score_differences)
+        print("shape of tuple_words_overlap:", K.int_shape(tuple_words_overlap))
 
         # Exclude padded/masked elements from counting.
         zeros_excluded_overlap = tuple_words_overlap
