@@ -209,7 +209,7 @@ class TupleInferenceInstance(TextInstance):
                 [question index][tab][all question+answer tuples][tab][background tuples][tab][label]
             Option 2:
                 same as option 1, but [question text][tab] comes immediately after the question index,
-                following the tab. 
+                following the tab.
         The question+answer tuples are formatted as:
             [a_1-tuple_1]$$$...$$$[a_1-tuple_n]###...###[a+_m-tuple_1]$$$...$$$[a_m-tuple_p]
         such that ``$$$`` serves as the tuple delimiter and ``###`` serves as the answer candidate
