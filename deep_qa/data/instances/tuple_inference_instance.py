@@ -120,7 +120,7 @@ class TupleInferenceInstance(TextInstance):
     background_tuples: List[TextTuple]
         This is a list of background ``TextTuples`` (currently used for all answer candidates).
 
-    question_test: str, default=None
+    question_text: str, default=None
         The original text of the question, if available.
 
     label: int, default=None
@@ -141,7 +141,7 @@ class TupleInferenceInstance(TextInstance):
         self.question_text = question_text
 
     def display_string(self):
-        to_return = 'MultipleTrueFalseTuplesWithBackgroundInstance: \n'
+        to_return = 'TupleInferenceInstance: \n'
         to_return += "Answer Candidates: \n"
         for answer_index in range(len(self.answer_tuples)):
             string_answer_tuples = [a_tuple.display_string() for a_tuple in self.answer_tuples[answer_index]]
