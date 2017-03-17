@@ -174,13 +174,15 @@ class TupleInferenceModel(TextTrainer):
 
         # Find the probability that any given question tuple is entailed by the given background tuples.
         # shape: (batch size, num_options, num_question_tuples)
-        combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init, name="noisy_or_1")
+        combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init)
+        combine_background_evidence.name = "noisy_or_1"
         qi_probabilities = combine_background_evidence(matches)
 
         # Find the probability that any given option is correct, given the entailement scores of each of its
         # question tuples given the set of background tuples.
         # shape: (batch size, num_options)
-        combine_question_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init, name="noisy_or_2")
+        combine_question_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init)
+        combine_question_evidence.name = "noisy_or_2"
         options_probabilities = combine_question_evidence(qi_probabilities)
 
         # Softmax over the options to choose the best one.
