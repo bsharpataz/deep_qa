@@ -4,6 +4,7 @@ import textwrap
 from keras.layers import Input, Layer
 from overrides import overrides
 import numpy
+from scipy.stats import kurtosis
 
 from deep_qa.data.instances.tuple_inference_instance import TupleInferenceInstance
 from deep_qa.layers.tuple_matchers.word_overlap_tuple_matcher import WordOverlapTupleMatcher
@@ -220,6 +221,11 @@ class TupleInferenceModel(TextTrainer):
         else:
             result += "  Answered incorrectly\n"
         result += "====================================================================\n"
+
+        # noisy_or_1_output = outputs.get('noisy_or_1', None)
+        # if noisy_or_1_output is not None:
+        #     kurtosis_across_kurtosis()
+
 
         # Output of the tuple matcher layer:
         # shape: (num_options, num_question_tuples, num_background_tuples)

@@ -39,7 +39,8 @@ class PretrainedEmbeddings:
         words_to_keep = set(data_indexer.words_in_index())
         vocab_size = data_indexer.get_vocab_size()
         embeddings = {}
-        embedding_dim = None
+        #embedding_dim = None
+        embedding_dim = 1
 
         # TODO(matt): make this a parameter
         embedding_misses_filename = 'embedding_misses.txt'

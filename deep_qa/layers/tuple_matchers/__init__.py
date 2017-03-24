@@ -22,9 +22,11 @@ from collections import OrderedDict
 from .word_overlap_tuple_matcher import WordOverlapTupleMatcher
 from .encoded_tuple_matcher import EncodedTupleMatcher
 from .embedded_tuple_matcher import EmbeddedTupleMatcher
+from .weighted_tuple_matcher import WeightedTupleMatcher
 
 # The first item added here will be used as the default in some cases.
 tuple_matchers = OrderedDict() # pylint: disable=invalid-name
 tuple_matchers['word_overlap'] = WordOverlapTupleMatcher
 tuple_matchers['encoded_matcher'] = EncodedTupleMatcher
 tuple_matchers['embedded_matcher'] = EmbeddedTupleMatcher
+tuple_matchers['weighted_matcher'] = WeightedTupleMatcher

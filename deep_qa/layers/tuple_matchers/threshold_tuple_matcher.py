@@ -164,7 +164,7 @@ class ThresholdTupleMatcher(Layer):
         # First expand to shape: (batch size, num_slots, 1, num_slot_words_tuple2, embedding_dim)
         expanded_tuple2 = K.expand_dims(tuple2_input, 2)
         # Tile to desired dimensions.
-        tiled_tuple2 = K.tile(expanded_tuple2, [1, 1, num_slot_words_t2, 1, 1])
+        tiled_tuple2 = K.tile(expanded_tuple2, [1, 1, num_slot_words_t1, 1, 1])
 
         # Generate the similarity scores of each of the word pairs.
         # shape: (batch size, num_slots, num_slot_words_tuple1, num_slot_words_tuple2)
