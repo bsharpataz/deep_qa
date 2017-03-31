@@ -11,6 +11,7 @@ from deep_qa.layers.tuple_matchers import tuple_matchers
 from ...layers.attention.masked_softmax import MaskedSoftmax
 from ...layers.backend.repeat import Repeat
 from ...layers.noisy_or import NoisyOr
+from ...layers.subtract_minimum import SubtractMinimum
 from ...layers.wrappers.time_distributed_with_mask import TimeDistributedWithMask
 from ...training.models import DeepQaModel
 from ...training.text_trainer import TextTrainer
@@ -178,12 +179,18 @@ class TupleInferenceModel(TextTrainer):
         combine_background_evidence.name = "noisy_or_1"
         qi_probabilities = combine_background_evidence(matches)
 
+        # Peek across the options, and normalize the amount that a given answer tuple template "counts"
+        # towards a correct answer.
+        normalize_across_options = SubtractMinimum(axis=1)
+        qi_normalized_across_options = normalize_across_options(qi_probabilities)
+
         # Find the probability that any given option is correct, given the entailement scores of each of its
         # question tuples given the set of background tuples.
         # shape: (batch size, num_options)
         combine_question_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init)
         combine_question_evidence.name = "noisy_or_2"
-        options_probabilities = combine_question_evidence(qi_probabilities)
+        # options_probabilities = combine_question_evidence(qi_probabilities)
+        options_probabilities = combine_question_evidence(qi_normalized_across_options)
 
         # Softmax over the options to choose the best one.
         final_output = MaskedSoftmax(name="masked_softmax")(options_probabilities)
