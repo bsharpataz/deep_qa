@@ -59,6 +59,14 @@ character_span_instance
     :undoc-members:
     :show-inheritance:
 
+graph_align_instance
+--------------------
+
+.. automodule:: deep_qa.data.instances.graph_align_instance
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 instance
 --------
 
@@ -140,7 +148,7 @@ true_false_instance
     :show-inheritance:
 
 tuple_inference_instance
----------------------------
+------------------------
 
 .. automodule:: deep_qa.data.instances.tuple_inference_instance
     :members:
