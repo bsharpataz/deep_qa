@@ -1,4 +1,3 @@
-from collections import OrderedDict
 from typing import Dict, Any
 import textwrap
 
@@ -7,7 +6,6 @@ from overrides import overrides
 import numpy
 
 from deep_qa.data.instances.tuple_inference_instance import TupleInferenceInstance
-from deep_qa.data.instances.graph_align_instance import GraphAlignInstance
 from deep_qa.layers.tuple_matchers.word_overlap_tuple_matcher import WordOverlapTupleMatcher
 from deep_qa.layers.tuple_matchers import tuple_matchers
 from ...layers.attention.masked_softmax import MaskedSoftmax
@@ -61,8 +59,6 @@ class TupleInferenceModel(TextTrainer):
 
     """
     def __init__(self, params: Dict[str, Any]):
-        self.instance_choice = get_choice_with_default(params, "instance_type",
-                                                       list(tuple_inference_instances.keys()))
         self.noisy_or_param_init = params.pop('noisy_or_param_init', 'uniform')
         self.num_question_tuples = params.pop('num_question_tuples', 10)
         self.num_background_tuples = params.pop('num_background_tuples', 10)
@@ -94,7 +90,7 @@ class TupleInferenceModel(TextTrainer):
 
     @overrides
     def _instance_type(self):
-        return tuple_inference_instances[self.instance_choice]
+        return TupleInferenceInstance
 
     @classmethod
     @overrides
@@ -295,8 +291,3 @@ class TupleInferenceModel(TextTrainer):
                 result += "\tbg_tuple_{0} \n\t{1}\n".format(background_tuple_index, wrapped_tuple)
             result += "\n"
         return result
-
-# The first item added here will be used as the default in some cases.
-tuple_inference_instances = OrderedDict()  # pylint: disable=invalid-name
-tuple_inference_instances['tuple_inference_instance'] = TupleInferenceInstance
-tuple_inference_instances['graph_align_instance'] = GraphAlignInstance
