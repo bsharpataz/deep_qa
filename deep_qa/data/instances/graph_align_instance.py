@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Dict, List
 
 import numpy
@@ -50,7 +49,7 @@ class GraphAlignInstance(TextInstance):
         return IndexedGraphAlignInstance(self.answer_graphlets, self.label, self.index)
 
     @classmethod
-    def read_from_line(cls, line: str, default_label: int = None):
+    def read_from_line(cls, line: str, default_label: int=None):
         """
         Reads a TupleInstances from a line.  The format has two options:
 
@@ -125,7 +124,7 @@ class IndexedGraphAlignInstance(IndexedInstance):
     @classmethod
     @overrides
     def empty_instance(cls):
-        return IndexedGraphAlignInstance([], [], label=None, index=None)
+        return IndexedGraphAlignInstance([], label=None, index=None)
 
     @overrides
     def get_lengths(self) -> Dict[str, int]:
@@ -241,11 +240,11 @@ class IndexedGraphAlignInstance(IndexedInstance):
         """
         desired_num_alignments = padding_lengths['num_alignments']
         graphlet_in = self.pad_sequence_to_length(graphlet_in, desired_num_alignments,
-                                               default_value=lambda: [], truncate_from_right=False)
+                                                  default_value=lambda: [], truncate_from_right=False)
         # Pad the alignment to the desired number of features.
         desired_num_features = padding_lengths['num_features']
         graphlet_in = [self.pad_sequence_to_length(alignment, desired_num_features, default_value=lambda: 0.0,
-                                                truncate_from_right=False) for alignment in graphlet_in]
+                                                   truncate_from_right=False) for alignment in graphlet_in]
         return graphlet_in
 
     @overrides
