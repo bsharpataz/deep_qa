@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Dict, List
 
 import numpy
@@ -42,7 +43,7 @@ class GraphAlignInstance(TextInstance):
     @overrides
     def words(self) -> Dict[str, List[str]]:
         # Unused
-        return None
+        return defaultdict(list)
 
     @overrides
     def to_indexed_instance(self, data_indexer: DataIndexer):
@@ -139,13 +140,19 @@ class IndexedGraphAlignInstance(IndexedInstance):
             max_num_features = max(max_num_features, answer_features)
 
         lengths = {'num_options': len(self.answers_indexed),
-                   'num_graphlets': max_num_graphlets,
-                   'num_alignments': max_num_alignments,
-                   'num_features': max_num_features}
+                   # What it *should* be:
+                   # 'num_graphlets': max_num_graphlets,
+                   # 'num_alignments': max_num_alignments,
+                   # 'num_features': max_num_features}
+                   # What it is now:
+                   'num_question_tuples': max_num_graphlets,
+                   'num_background_tuples': 1,
+                   'num_sentence_words': max_num_features,
+                   'num_slots': max_num_alignments}
         return lengths
 
     @staticmethod
-    def get_lengths_from_indexed_tuples(indexed_graphlets: List[List[List[int]]]):
+    def get_lengths_from_indexed_tuples(indexed_graphlets: List[List[List[float]]]):
         '''
         Helper method for ``self.get_lengths()``. This gets the max lengths (max
         number alignments, and features per alignment for a list of indexed
@@ -189,7 +196,8 @@ class IndexedGraphAlignInstance(IndexedInstance):
         setting.
         """
         desired_num_options = padding_lengths['num_options']
-        desired_num_graphlets = padding_lengths['num_graphlets']
+        # desired_num_graphlets = padding_lengths['num_graphlets']
+        desired_num_graphlets = padding_lengths['num_question_tuples']
 
         # Pad the number of answers. Note that while we use the superclass method when we need to add empty
         # answer_options, we don't want to remove answer options.
@@ -238,11 +246,13 @@ class IndexedGraphAlignInstance(IndexedInstance):
             In the returned (modified) list, the length matches the desired_num_alignments and each of
             the alignments has a number of features equal to the value set by ``num_features`` in padding_lengths.
         """
-        desired_num_alignments = padding_lengths['num_alignments']
+        # desired_num_alignments = padding_lengths['num_alignments']
+        desired_num_alignments = padding_lengths['num_slots']
         graphlet_in = self.pad_sequence_to_length(graphlet_in, desired_num_alignments,
                                                   default_value=lambda: [], truncate_from_right=False)
         # Pad the alignment to the desired number of features.
-        desired_num_features = padding_lengths['num_features']
+        # desired_num_features = padding_lengths['num_features']
+        desired_num_features = padding_lengths['num_sentence_words']
         graphlet_in = [self.pad_sequence_to_length(alignment, desired_num_features, default_value=lambda: 0.0,
                                                    truncate_from_right=False) for alignment in graphlet_in]
         return graphlet_in
@@ -252,6 +262,7 @@ class IndexedGraphAlignInstance(IndexedInstance):
         # Question Input:
         # (num_options, num_option_graphlets, num_alignments, num_features)
         question_options_matrix = numpy.asarray(self.answers_indexed, dtype='float32')
+        background_matrix = numpy.asarray([1.0], dtype="float32")
 
         # Represent the label as a class label.
         if self.label is None:
@@ -259,4 +270,4 @@ class IndexedGraphAlignInstance(IndexedInstance):
         else:
             label = numpy.zeros((len(self.answers_indexed)))
             label[self.label] = 1
-        return question_options_matrix, label
+        return (question_options_matrix, background_matrix), label

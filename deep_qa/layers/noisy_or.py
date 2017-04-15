@@ -87,14 +87,23 @@ class NoisyOr(MaskedLayer):
     def compute_mask(self, inputs, mask=None):
         # pylint: disable=unused-argument
         if mask is not None:
+            if K.ndim(mask) == K.ndim(inputs) + 1 and K.int_shape(mask)[-1] == 1:
+                mask = K.squeeze(mask, axis=-1)
             return K.any(mask, axis=self.axis)
         return None
 
     def call(self, inputs, mask=None):
         # shape: (batch size, ..., num_probs, ...)
         probabilities = inputs
+        print("K.int_shape(probs, before mask):", K.int_shape(probabilities))
         if mask is not None:
+            print("K.int_shape(mask):", K.int_shape(mask))
+
+        if mask is not None:
+            if K.ndim(mask) == K.ndim(inputs) + 1 and K.int_shape(mask)[-1] == 1:
+                mask = K.squeeze(mask, axis=-1)
             probabilities *= K.cast(mask, "float32")
+        print("K.int_shape(probs, after mask):", K.int_shape(probabilities))
 
         noisy_probs = self.noise_parameter * probabilities
 

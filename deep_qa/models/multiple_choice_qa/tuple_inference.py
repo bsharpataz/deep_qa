@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import Dict, Any
 import textwrap
 
@@ -6,7 +7,9 @@ from overrides import overrides
 import numpy
 
 from deep_qa.data.instances.tuple_inference_instance import TupleInferenceInstance
+from deep_qa.data.instances.graph_align_instance import GraphAlignInstance
 from deep_qa.layers.tuple_matchers.word_overlap_tuple_matcher import WordOverlapTupleMatcher
+from deep_qa.layers.tuple_matchers.graph_align_tuple_matcher import GraphAlignTupleMatcher
 from deep_qa.layers.tuple_matchers import tuple_matchers
 from ...layers.attention.masked_softmax import MaskedSoftmax
 from ...layers.backend.repeat import Repeat
@@ -15,6 +18,8 @@ from ...layers.wrappers.time_distributed_with_mask import TimeDistributedWithMas
 from ...training.models import DeepQaModel
 from ...training.text_trainer import TextTrainer
 from ...common.params import get_choice_with_default
+
+from keras import backend as K
 
 
 class TupleInferenceModel(TextTrainer):
@@ -59,11 +64,13 @@ class TupleInferenceModel(TextTrainer):
 
     """
     def __init__(self, params: Dict[str, Any]):
+        self.instance_choice = get_choice_with_default(params, "instance_type",
+                                                       list(tuple_inference_instances.keys()))
         self.noisy_or_param_init = params.pop('noisy_or_param_init', 'uniform')
-        self.num_question_tuples = params.pop('num_question_tuples', 10)
-        self.num_background_tuples = params.pop('num_background_tuples', 10)
-        self.num_tuple_slots = params.pop('num_tuple_slots', 4)
-        self.num_slot_words = params.pop('num_sentence_words', 5)
+        self.num_question_tuples = params.pop('num_question_tuples', 10) # GraphAlign: num_graphlets
+        self.num_background_tuples = params.pop('num_background_tuples', 10) # GraphAlign: unused
+        self.num_tuple_slots = params.pop('num_tuple_slots', 4) # GraphAlign: num_alignments
+        self.num_slot_words = params.pop('num_sentence_words', 5) # GraphAlign: num_features
         self.num_options = params.pop('num_answer_options', 4)
         self.display_text_wrap = params.pop('display_text_wrap', 150)
         self.display_num_tuples = params.pop('display_num_tuples', 5)
@@ -78,9 +85,11 @@ class TupleInferenceModel(TextTrainer):
         if issubclass(tuple_matcher_class, Layer):
             # These TimeDistributed wrappers correspond to distributing across each of num_options,
             # num_question_tuples, and num_background_tuples.
+            # For graph align, it's over num_options, num_graphlets_num_alignments
             match_layer = tuple_matcher_class(**tuple_matcher_params)
-            self.tuple_matcher = TimeDistributedWithMask(
-                    TimeDistributedWithMask(TimeDistributedWithMask(match_layer)))
+            self.tuple_matcher = TimeDistributedWithMask(TimeDistributedWithMask(TimeDistributedWithMask(match_layer)))
+            # if not self.instance_choice == "graph_align_instance":
+            #     self.tuple_matcher = TimeDistributedWithMask(self.tuple_matcher)
         else:
             self.tuple_matcher = tuple_matcher_class(self, tuple_matcher_params)
         self.tuple_matcher.name = "match_layer"
@@ -90,7 +99,7 @@ class TupleInferenceModel(TextTrainer):
 
     @overrides
     def _instance_type(self):
-        return TupleInferenceInstance
+        return tuple_inference_instances[self.instance_choice]
 
     @classmethod
     @overrides
@@ -98,6 +107,7 @@ class TupleInferenceModel(TextTrainer):
         custom_objects = super(TupleInferenceModel, cls)._get_custom_objects()
         # TODO(matt): Figure out a better way to handle the concrete TupleMatchers here.
         custom_objects['WordOverlapTupleMatcher'] = WordOverlapTupleMatcher
+        custom_objects['GraphAlignTupleMatcher'] = GraphAlignTupleMatcher
         custom_objects['MaskedSoftmax'] = MaskedSoftmax
         custom_objects['NoisyOr'] = NoisyOr
         custom_objects['Repeat'] = Repeat
@@ -116,6 +126,9 @@ class TupleInferenceModel(TextTrainer):
 
     @overrides
     def _set_padding_lengths(self, padding_lengths: Dict[str, int]):
+        # # TODO(becky): what an ugly hack!
+        # if "num_sentence_words" not in padding_lengths:
+        #     padding_lengths['num_sentence_words'] = 1
         super(TupleInferenceModel, self)._set_padding_lengths(padding_lengths)
         if self.num_question_tuples is None:
             self.num_question_tuples = padding_lengths['num_question_tuples']
@@ -158,42 +171,68 @@ class TupleInferenceModel(TextTrainer):
         the answer candidates, and so we perform a softmax to determine which is the best answer.
         """
         # shape: (batch size, num_options, num_question_tuples, num_tuple_slots, num_slot_words)
+        # GraphAlign shape: (batch size, num_options, num_graphlets, num_alignments, num_features)
         slot_shape = self._get_sentence_shape(self.num_slot_words)
-        question_input_shape = (self.num_options, self.num_question_tuples, self.num_tuple_slots) + slot_shape
-        question_input = Input(question_input_shape, dtype='int32', name='question_input')
-        # shape: (batch size, num_background_tuples, num_tuple_slots, num_slot_words)
-        background_input_shape = (self.num_background_tuples, self.num_tuple_slots) + slot_shape
-        background_input = Input(background_input_shape, dtype='int32', name='background_input')
+        if self.instance_choice == "graph_align_instance":
+            input_dtype = 'float32'
+            background_input_shape = [1]
+        else:
+            input_dtype = 'int32'
+            background_input_shape = (self.num_background_tuples, self.num_tuple_slots) + slot_shape
 
-        # Expand and tile the question input to be:
-        # shape: (batch size, num_options, num_question_tuples, num_background_tuples, num_tuple_slots,
-        #         num_slot_words)
-        tiled_question = Repeat(axis=3, repetitions=self.num_background_tuples)(question_input)
+        question_input_shape = (self.num_options, self.num_question_tuples, self.num_tuple_slots) + slot_shape
+        question_input = Input(question_input_shape, dtype=input_dtype, name='question_input')
+        # shape: (batch size, num_background_tuples, num_tuple_slots, num_slot_words)
+        # GraphAlign shape: (batch size, 1)
+        #background_input_shape = (self.num_background_tuples, self.num_tuple_slots) + slot_shape
+        background_input = Input(background_input_shape, dtype=input_dtype, name='background_input')
+        print("K.int_shape(question_input):", K.int_shape(question_input))
+        print("K.int_shape(background_input)", K.int_shape(background_input))
+
+        if self.instance_choice == "graph_align_instance":
+            tiled_question = question_input
+        else:
+            # Expand and tile the question input to be:
+            # shape: (batch size, num_options, num_question_tuples, num_background_tuples, num_tuple_slots,
+            #         num_slot_words)
+            tiled_question = Repeat(axis=3, repetitions=self.num_background_tuples)(question_input)
 
         # Expand and tile the background input to match question input.
         # shape: (batch size, num_options, num_question_tuples, num_background_tuples, num_tuple_slots,
         #               num_slot_words)
         # First, add num_options.
+        # GA becomes: (batch size, num_options, 1)
         tiled_background = Repeat(axis=1, repetitions=self.num_options)(background_input)
         # Next, add num_question_tuples.
+        # GA becomes: (batch size, num_options, num_graphlets, 1)
         tiled_background = Repeat(axis=2, repetitions=self.num_question_tuples)(tiled_background)
+        if self.instance_choice == "graph_align_instance":
+            # GA becomes: (batch size, num_options, num_graphlets, num_alignments, 1)
+            tiled_background = Repeat(axis=3, repetitions=self.num_tuple_slots)(tiled_background)
 
+        print("K.int_shape(tiled_question): ", K.int_shape(tiled_question))
+        print("K.int_shape(tiled_bg):", K.int_shape(tiled_background))
         # Find the matches between the question and background tuples.
         # shape: (batch size, num_options, num_question_tuples, num_background_tuples)
         matches = self.tuple_matcher([tiled_question, tiled_background])
+        print("K.int_shape(matches):", K.int_shape(matches))
 
         # Find the probability that any given question tuple is entailed by the given background tuples.
         # shape: (batch size, num_options, num_question_tuples)
         combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init)
         combine_background_evidence.name = "noisy_or_1"
         qi_probabilities = combine_background_evidence(matches)
+        print("K.int_shape(qi_probs):", K.int_shape(qi_probabilities))
 
-        # Find the probability that any given option is correct, given the entailement scores of each of its
-        # question tuples given the set of background tuples.
-        # shape: (batch size, num_options)
-        combine_question_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init)
-        combine_question_evidence.name = "noisy_or_2"
-        options_probabilities = combine_question_evidence(qi_probabilities)
+        if self.instance_choice == "graph_align_instance":
+            options_probabilities = qi_probabilities
+        else:
+            # Find the probability that any given option is correct, given the entailement scores of each of its
+            # question tuples given the set of background tuples.
+            # shape: (batch size, num_options)
+            combine_question_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init)
+            combine_question_evidence.name = "noisy_or_2"
+            options_probabilities = combine_question_evidence(qi_probabilities)
 
         # Softmax over the options to choose the best one.
         final_output = MaskedSoftmax(name="masked_softmax")(options_probabilities)
@@ -291,3 +330,8 @@ class TupleInferenceModel(TextTrainer):
                 result += "\tbg_tuple_{0} \n\t{1}\n".format(background_tuple_index, wrapped_tuple)
             result += "\n"
         return result
+
+# The first item added here will be used as the default in some cases.
+tuple_inference_instances = OrderedDict()  # pylint: disable=invalid-name
+tuple_inference_instances['tuple_inference_instance'] = TupleInferenceInstance
+tuple_inference_instances['graph_align_instance'] = GraphAlignInstance
