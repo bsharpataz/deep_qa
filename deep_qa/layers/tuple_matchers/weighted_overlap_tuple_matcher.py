@@ -1,5 +1,5 @@
 from keras import backend as K
-from keras import initializations, activations
+from keras import activations, initializers
 from keras.layers import Layer
 from overrides import overrides
 
@@ -83,16 +83,16 @@ class WeightedOverlapTupleMatcher(Layer):
         hidden_layer_input_dim = input_shape[0][1]
         for i in range(self.num_hidden_layers):
             hidden_layer = self.add_weight(shape=(hidden_layer_input_dim, self.hidden_layer_width),
-                                           initializer=initializations.get(self.hidden_layer_init),
+                                           initializer=initializers.get(self.hidden_layer_init),
                                            name='%s_hiddenlayer_%d' % (self.name, i))
             self.hidden_layer_weights.append(hidden_layer)
             hidden_layer_input_dim = self.hidden_layer_width
         # Add the weights for the final layer.
         self.score_layer = self.add_weight(shape=(self.hidden_layer_width, 1),
-                                           initializer=initializations.get(self.hidden_layer_init),
+                                           initializer=initializers.get(self.hidden_layer_init),
                                            name='%s_score' % self.name)
 
-    def get_output_shape_for(self, input_shapes):
+    def compute_output_shape(self, input_shapes):
         # pylint: disable=unused-argument
         return (input_shapes[0][0], 1)
 
@@ -103,7 +103,7 @@ class WeightedOverlapTupleMatcher(Layer):
         # the whole tuple_match should be masked, so we would return a 0, otherwise we return a 1.  As such,
         # the shape of the returned mask is (batch size, 1).
         input1, input2, _ = input
-        mask = K.any(input1, axis=[1, 2]) * K.any(input2, axis=[1, 2])
+        mask = K.cast(K.any(input1, axis=[1, 2]), "float32") * K.cast(K.any(input2, axis=[1, 2]), "float32")
         return K.expand_dims(mask)
 
     def get_output_mask_shape_for(self, input_shape):  # pylint: disable=no-self-use

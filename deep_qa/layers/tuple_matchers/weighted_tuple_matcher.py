@@ -5,7 +5,7 @@ from keras import backend as K
 
 from ..wrappers.time_distributed_with_mask import TimeDistributedWithMask
 from .weighted_overlap_tuple_matcher import WeightedOverlapTupleMatcher
-from ...common.params import get_choice_with_default
+from  deep_qa.common.params import pop_choice
 
 
 class WeightedTupleMatcher:
@@ -29,9 +29,10 @@ class WeightedTupleMatcher:
         self.text_trainer = text_trainer
         if tuple_matcher_params is None:
             tuple_matcher_params = {}
-        tuple_matcher_choice = get_choice_with_default(tuple_matcher_params,
-                                                       "weighted_matcher_type",
-                                                       list(weighted_tuple_matchers.keys()))
+        tuple_matcher_choice = pop_choice(tuple_matcher_params,
+                                          "weighted_matcher_type",
+                                          list(weighted_tuple_matchers.keys()),
+                                          default_to_first_choice=True)
         self.tuple_matcher = weighted_tuple_matchers[tuple_matcher_choice](**tuple_matcher_params)
 
     def __call__(self, inputs):

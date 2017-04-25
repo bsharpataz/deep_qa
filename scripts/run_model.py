@@ -8,8 +8,10 @@ import sys
 # how arguments work (e.g., loading a file), then we can think about setting this as a parameter.
 import random
 import numpy
-random.seed(13370)
-numpy.random.seed(1337)
+# random.seed(13370)
+# numpy.random.seed(1337)
+random.seed(13373)
+numpy.random.seed(13373)
 
 # pylint: disable=wrong-import-position
 
