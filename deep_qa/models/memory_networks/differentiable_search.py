@@ -3,7 +3,7 @@ import logging
 import pickle
 
 from itertools import zip_longest
-from typing import Any, Dict, List
+from typing import List
 
 from overrides import overrides
 import numpy
@@ -11,11 +11,13 @@ import numpy
 from sklearn.neighbors import LSHForest
 
 from ...data.dataset import TextDataset
-from ...data.instances.background_instance import BackgroundInstance
-from ...data.instances.true_false_instance import TrueFalseInstance
+from ...data.instances.wrappers import BackgroundInstance
+from ...data.instances.text_classification.text_classification_instance import TextClassificationInstance
+from ...common.params import Params
 from .memory_network import MemoryNetwork
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+
 
 class DifferentiableSearchMemoryNetwork(MemoryNetwork):
     """
@@ -36,7 +38,7 @@ class DifferentiableSearchMemoryNetwork(MemoryNetwork):
     file, using the standard MemoryNetwork code.  It is only in subsequent epochs that we
     will override that and use our differentiable search to find background knowledge.
     """
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         # Location of corpus to use for background knowledge search. This corpus is assumed to be
         # gzipped, one sentence per line.
         self.corpus_path = params.pop('corpus_path', None)
@@ -63,6 +65,7 @@ class DifferentiableSearchMemoryNetwork(MemoryNetwork):
         super(DifferentiableSearchMemoryNetwork, self).__init__(params)
 
         # And then set some member variables.
+        self._sentence_encoder_model = self.__build_sentence_encoder_model()
         self.lsh = LSHForest(random_state=12345)
         self.instance_index = {}  # type: Dict[int, str]
 
@@ -87,13 +90,13 @@ class DifferentiableSearchMemoryNetwork(MemoryNetwork):
         else:
             self._initialize_lsh()
 
-    def get_nearest_neighbors(self, instance: TrueFalseInstance) -> List[TrueFalseInstance]:
+    def get_nearest_neighbors(self, instance: TextClassificationInstance) -> List[TextClassificationInstance]:
         '''
         Search in the corpus for the nearest neighbors to `instance`.  The corpus we search, how
         many neighbors to return, and the specifics of the encoder model are all defined in
         parameters passed to the constructor of this object.
         '''
-        sentence_vector = self.get_sentence_vector(instance.text)
+        sentence_vector = self.__get_sentence_vector(instance.text)
         _, nearest_neighbor_indices = self.lsh.kneighbors([sentence_vector],
                                                           n_neighbors=self.num_background)
         return [self.instance_index[neighbor_index] for neighbor_index in nearest_neighbor_indices[0]]
@@ -116,12 +119,13 @@ class DifferentiableSearchMemoryNetwork(MemoryNetwork):
             # background information, taken from a nearest neighbor search over the corpus.
             logger.info("Updating the training data background")
             self.training_dataset = self._update_background_dataset(self.training_dataset)
-            self.train_input, self.train_labels = self._prepare_data(self.training_dataset, for_train=False)
+            indexed_dataset = self.training_dataset.to_indexed_dataset(self.data_indexer)
+            self.training_arrays = self.create_data_arrays(indexed_dataset)
             if self.validation_dataset:
                 logger.info("Updating the validation data background")
                 self.validation_dataset = self._update_background_dataset(self.validation_dataset)
-                self.validation_input, self.validation_labels = self._prepare_data(
-                        self.validation_dataset, for_train=False)
+                indexed_dataset = self.validation_dataset.to_indexed_dataset(self.data_indexer)
+                self.validation_arrays = self.create_data_arrays(indexed_dataset)
 
     @overrides
     def _save_auxiliary_files(self):
@@ -142,8 +146,6 @@ class DifferentiableSearchMemoryNetwork(MemoryNetwork):
         This method encodes the corpus in batches, using encoder_model initialized above.  After
         the whole corpus is encoded, we pass the vectors off to sklearn's LSHForest.fit() method.
         """
-        if self._sentence_encoder_model is None:
-            self._build_sentence_encoder_model()
         logger.info("Reading corpus file")
         corpus_file = gzip.open(self.corpus_path)
         corpus_lines = [line.decode('utf-8') for line in corpus_file.readlines()]
@@ -171,8 +173,9 @@ class DifferentiableSearchMemoryNetwork(MemoryNetwork):
             for instance in instances:
                 self.instance_index[len(self.instance_index)] = instance
 
-            encoder_input = [self._prepare_instance(instance, False)[0] for instance in instances]
-            encoder_input = numpy.asarray(encoder_input, dtype='int32')
+            dataset = TextDataset(instances)
+            indexed_dataset = dataset.to_indexed_dataset(self.data_indexer)
+            encoder_input, _ = self.create_data_arrays(indexed_dataset)
             current_batch_encoded_sentences = self._sentence_encoder_model.predict(encoder_input)
             for encoded_sentence in current_batch_encoded_sentences:
                 encoded_sentences.append(encoded_sentence)
@@ -187,8 +190,24 @@ class DifferentiableSearchMemoryNetwork(MemoryNetwork):
         """
         new_instances = []
         for instance in dataset.instances:  # type: BackgroundInstance
-            text_instance = TrueFalseInstance(instance.text, label=True)
+            text_instance = TextClassificationInstance(instance.text, label=True)
             new_background = self.get_nearest_neighbors(text_instance)
             background_text = [background.text for background in new_background]
             new_instances.append(BackgroundInstance(instance, background_text))
         return TextDataset(new_instances)
+
+    def __build_sentence_encoder_model(self):  # pylint: disable=no-self-use
+        # TODO(matt): this should be done using common.models.get_submodel().  I removed the method
+        # this used to use from TextTrainer, because it's too specific a need to belong there.
+        class Dummy:
+            def predict(self, dummy_input):  # pylint: disable=no-self-use,unused-argument
+                return numpy.asarray([1])
+        return Dummy()
+
+    def __get_sentence_vector(self, sentence: str):  # pylint: disable=no-self-use,unused-argument
+        # TODO(matt): this should be done using self._sentence_encoder_model  I removed the method
+        # this used to use from TextTrainer, because it's too specific a need to belong there.
+        # Also, this whole class should probably just use the vector-based retrieval code.  This
+        # class was written pretty early in the life of this codebase, before we had learned a lot
+        # of good lessons about writing keras code.
+        return numpy.asarray([1])

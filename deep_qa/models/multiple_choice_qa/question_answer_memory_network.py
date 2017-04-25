@@ -1,18 +1,19 @@
-from typing import Dict, Any
+from typing import Dict
 
 from overrides import overrides
 from keras.layers import Input
 
-from ...data.instances.question_answer_instance import QuestionAnswerInstance
-from ...layers.wrappers.encoder_wrapper import EncoderWrapper
-from ..memory_networks.memory_network import MemoryNetwork
+from ...data.instances.multiple_choice_qa import QuestionAnswerInstance
+from ...layers.wrappers import EncoderWrapper
+from ..memory_networks import MemoryNetwork
+from ...common.params import Params
 
 
 class QuestionAnswerMemoryNetwork(MemoryNetwork):
     '''
     This is a MemoryNetwork that is trained on QuestionAnswerInstances.
 
-    The base MemoryNetwork assumes we're dealing with TrueFalseInstances, so there is no
+    The base MemoryNetwork assumes we're dealing with TextClassificationInstances, so there is no
     separate question and answer text.  We need to add an additional input, and handle it specially
     at the end, with a very different final "entailment" model, where we're doing dot-product
     similarity with encoded answer options, or something similar.
@@ -25,7 +26,7 @@ class QuestionAnswerMemoryNetwork(MemoryNetwork):
         encoder used for questions (in this case, that's currently ``"default"``).
     '''
 
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         self.answer_encoder_name = params.pop("answer_encoder_name", "answer")
         super(QuestionAnswerMemoryNetwork, self).__init__(params)
 
@@ -41,17 +42,19 @@ class QuestionAnswerMemoryNetwork(MemoryNetwork):
         return QuestionAnswerInstance
 
     @overrides
-    def _get_max_lengths(self) -> Dict[str, int]:
-        max_lengths = super(QuestionAnswerMemoryNetwork, self)._get_max_lengths()
-        max_lengths['answer_length'] = self.max_answer_length
-        max_lengths['num_options'] = self.num_options
-        return max_lengths
+    def _get_padding_lengths(self) -> Dict[str, int]:
+        padding_lengths = super(QuestionAnswerMemoryNetwork, self)._get_padding_lengths()
+        padding_lengths['answer_length'] = self.max_answer_length
+        padding_lengths['num_options'] = self.num_options
+        return padding_lengths
 
     @overrides
-    def _set_max_lengths(self, max_lengths: Dict[str, int]):
-        super(QuestionAnswerMemoryNetwork, self)._set_max_lengths(max_lengths)
-        self.max_answer_length = max_lengths['answer_length']
-        self.num_options = max_lengths['num_options']
+    def _set_padding_lengths(self, padding_lengths: Dict[str, int]):
+        super(QuestionAnswerMemoryNetwork, self)._set_padding_lengths(padding_lengths)
+        if self.max_answer_length is None:
+            self.max_answer_length = padding_lengths['answer_length']
+        if self.num_options is None:
+            self.num_options = padding_lengths['num_options']
 
     @overrides
     def _get_entailment_output(self, combined_input):

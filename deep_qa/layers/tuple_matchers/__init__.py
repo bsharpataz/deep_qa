@@ -19,10 +19,12 @@ several ``Layers`` to the input (e.g., to embed the words before doing some comp
 """
 from collections import OrderedDict
 
+from .slot_similarity_tuple_matcher import SlotSimilarityTupleMatcher
 from .word_overlap_tuple_matcher import WordOverlapTupleMatcher
 from .encoded_tuple_matcher import EncodedTupleMatcher
 from .embedded_tuple_matcher import EmbeddedTupleMatcher
 from .weighted_tuple_matcher import WeightedTupleMatcher
+from .threshold_tuple_matcher import ThresholdTupleMatcher
 
 # The first item added here will be used as the default in some cases.
 tuple_matchers = OrderedDict() # pylint: disable=invalid-name

@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict
 import textwrap
 
 from keras.layers import Input, Layer
@@ -6,16 +6,15 @@ from overrides import overrides
 import numpy
 from scipy.stats import kurtosis
 
-from deep_qa.data.instances.tuple_inference_instance import TupleInferenceInstance
-from deep_qa.layers.tuple_matchers.word_overlap_tuple_matcher import WordOverlapTupleMatcher
-from deep_qa.layers.tuple_matchers import tuple_matchers
-from ...layers.attention.masked_softmax import MaskedSoftmax
-from ...layers.backend.repeat import Repeat
-from ...layers.noisy_or import NoisyOr
-from ...layers.wrappers.time_distributed_with_mask import TimeDistributedWithMask
+from ...data.instances.multiple_choice_qa import TupleInferenceInstance
+from ...layers import NoisyOr
+from ...layers.attention import MaskedSoftmax
+from ...layers.backend import Repeat
+from ...layers.tuple_matchers import tuple_matchers, WordOverlapTupleMatcher
+from ...layers.wrappers import TimeDistributedWithMask
+from ...training import TextTrainer
 from ...training.models import DeepQaModel
-from ...training.text_trainer import TextTrainer
-from ...common.params import get_choice_with_default
+from ...common.params import Params
 
 
 class TupleInferenceModel(TextTrainer):
@@ -59,7 +58,7 @@ class TupleInferenceModel(TextTrainer):
         each of the answer tuples in a given instance when displaying the tuple match scores.
 
     """
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         self.noisy_or_param_init = params.pop('noisy_or_param_init', 'uniform')
         self.num_question_tuples = params.pop('num_question_tuples', 10)
         self.num_background_tuples = params.pop('num_background_tuples', 10)
@@ -69,9 +68,8 @@ class TupleInferenceModel(TextTrainer):
         self.display_text_wrap = params.pop('display_text_wrap', 150)
         self.display_num_tuples = params.pop('display_num_tuples', 5)
         tuple_matcher_params = params.pop('tuple_matcher', {})
-        tuple_matcher_choice = get_choice_with_default(tuple_matcher_params,
-                                                       "type",
-                                                       list(tuple_matchers.keys()))
+        tuple_matcher_choice = tuple_matcher_params.pop_choice("type", list(tuple_matchers.keys()),
+                                                               default_to_first_choice=True)
         tuple_matcher_class = tuple_matchers[tuple_matcher_choice]
         # This is a little ugly, but necessary, because the Keras Layer API treats arguments
         # differently than our model API, and we need access to the TextTrainer object in the tuple
@@ -106,26 +104,31 @@ class TupleInferenceModel(TextTrainer):
         return custom_objects
 
     @overrides
-    def _get_max_lengths(self) -> Dict[str, int]:
-        max_lengths = super(TupleInferenceModel, self)._get_max_lengths()
-        max_lengths['num_question_tuples'] = self.num_question_tuples
-        max_lengths['num_background_tuples'] = self.num_background_tuples
-        max_lengths['num_slots'] = self.num_tuple_slots
-        max_lengths['num_sentence_words'] = self.num_slot_words
-        max_lengths['num_options'] = self.num_options
-        return max_lengths
+    def _get_padding_lengths(self) -> Dict[str, int]:
+        padding_lengths = super(TupleInferenceModel, self)._get_padding_lengths()
+        padding_lengths['num_question_tuples'] = self.num_question_tuples
+        padding_lengths['num_background_tuples'] = self.num_background_tuples
+        padding_lengths['num_slots'] = self.num_tuple_slots
+        padding_lengths['num_sentence_words'] = self.num_slot_words
+        padding_lengths['num_options'] = self.num_options
+        return padding_lengths
 
     @overrides
-    def _set_max_lengths(self, max_lengths: Dict[str, int]):
-        super(TupleInferenceModel, self)._set_max_lengths(max_lengths)
-        self.num_question_tuples = max_lengths['num_question_tuples']
-        self.num_background_tuples = max_lengths['num_background_tuples']
-        self.num_tuple_slots = max_lengths['num_slots']
-        self.num_slot_words = max_lengths['num_sentence_words']
-        self.num_options = max_lengths['num_options']
+    def _set_padding_lengths(self, padding_lengths: Dict[str, int]):
+        super(TupleInferenceModel, self)._set_padding_lengths(padding_lengths)
+        if self.num_question_tuples is None:
+            self.num_question_tuples = padding_lengths['num_question_tuples']
+        if self.num_background_tuples is None:
+            self.num_background_tuples = padding_lengths['num_background_tuples']
+        if self.num_tuple_slots is None:
+            self.num_tuple_slots = padding_lengths['num_slots']
+        if self.num_slot_words is None:
+            self.num_slot_words = padding_lengths['num_sentence_words']
+        if self.num_options is None:
+            self.num_options = padding_lengths['num_options']
 
     @overrides
-    def _set_max_lengths_from_model(self):
+    def _set_padding_lengths_from_model(self):
         # TODO(becky): actually implement this (it's required for loading a saved model)
         pass
 
@@ -138,13 +141,18 @@ class TupleInferenceModel(TextTrainer):
         background tuples, :math:`k_j` is compared to each of the answer tuples, :math:`a_i^c`, to create a
         support/entailment score, :math:`s_{ij}^c`.  This score is determined using the selected ``TupleMatch``
         layer.
+
         Then, for each answer tuple, :math:`a_i^c \in A^c` we combine
         the scores for each :math:`k_j \in K` using noisy-or to get the entailment score for the given answer
-        choice tuple:
+        choice tuple::
+
             :math:`s_i^c = 1 - \prod_{j=1:J}(1 - q_1 * s_{ij}^c)`
+
         where q_1 is the noise parameter for this first noisy-or.  Next, we combine these scores for each answer
-        choice again using the noisy-or to get the entailment score for the answer candidate:
+        choice again using the noisy-or to get the entailment score for the answer candidate::
+
             :math:`s^c = 1 - \prod_{i=1:N}(1 - q_2 * s_{i}^c)`
+
         where q_2 is the noise parameter for this second noisy-or.  At this point, we have a score for each of
         the answer candidates, and so we perform a softmax to determine which is the best answer.
         """
@@ -190,7 +198,6 @@ class TupleInferenceModel(TextTrainer):
         final_output = MaskedSoftmax(name="masked_softmax")(options_probabilities)
 
         return DeepQaModel(input=[question_input, background_input], output=[final_output])
-
 
     @overrides
     def _instance_debug_output(self, instance: TupleInferenceInstance, outputs: Dict[str, numpy.array]) -> str:

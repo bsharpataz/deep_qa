@@ -1,19 +1,15 @@
-from typing import Any, Dict
+from typing import Dict
 
-from keras.layers import Dense, Input, merge
+from keras.layers import Dense, Input, Concatenate, TimeDistributed
 from overrides import overrides
 
-from ...data.instances.character_span_instance import CharacterSpanInstance
-from ...layers.attention.matrix_attention import MatrixAttention
-from ...layers.attention.masked_softmax import MaskedSoftmax
-from ...layers.attention.weighted_sum import WeightedSum
-from ...layers.backend.max import Max
-from ...layers.backend.repeat import Repeat
-from ...layers.complex_concat import ComplexConcat
-from ...layers.highway import Highway
-from ...layers.wrappers.time_distributed import TimeDistributed
-from ...training.text_trainer import TextTrainer
+from ...data.instances.reading_comprehension import CharacterSpanInstance
+from ...layers import ComplexConcat, Highway
+from ...layers.attention import MatrixAttention, MaskedSoftmax, WeightedSum
+from ...layers.backend import Max, Repeat
+from ...training import TextTrainer
 from ...training.models import DeepQaModel
+from ...common.params import Params
 
 
 class BidirectionalAttentionFlow(TextTrainer):
@@ -58,12 +54,12 @@ class BidirectionalAttentionFlow(TextTrainer):
     but it looks like he flattens it to our shape before he does any actual operations on it.  So,
     I `think` this is implementing pretty much exactly what he did, but I'm not totally certain.
     """
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         # There are a couple of defaults from TextTrainer that we want to override: we want to
         # default to using joint word and character-level embeddings, and we want to use a CNN
         # encoder to get a character-level encoding.  We set those here.
         params.setdefault('tokenizer', {'type': 'words and characters'})
-        encoder_params = params.pop('encoder', {'default': {}})
+        encoder_params = params.pop('encoder', {'default': {}}).as_dict()
         encoder_params.setdefault('word', {'type': 'cnn', 'ngram_filter_sizes': [5], 'num_filters': 100})
         params['encoder'] = encoder_params
         self.num_hidden_seq2seq_layers = params.pop('num_hidden_seq2seq_layers', 2)
@@ -72,7 +68,7 @@ class BidirectionalAttentionFlow(TextTrainer):
         self.num_highway_layers = params.pop('num_highway_layers', 2)
         self.highway_activation = params.pop('highway_activation', 'relu')
         self.similarity_function_params = params.pop('similarity_function',
-                                                     {'type': 'linear', 'combination': 'x,y,x*y'})
+                                                     {'type': 'linear', 'combination': 'x,y,x*y'}).as_dict()
         # We have two outputs, so using "val_acc" doesn't work.
         params.setdefault('validation_metric', 'val_loss')
         super(BidirectionalAttentionFlow, self).__init__(params)
@@ -167,8 +163,8 @@ class BidirectionalAttentionFlow(TextTrainer):
         # To predict the span word, we pass the merged representation through a Dense layer without
         # output size 1 (basically a dot product of a vector of weights and the passage vectors),
         # then do a softmax to get a position.
-        span_begin_input = merge([final_merged_passage, modeled_passage], mode='concat')
-        span_begin_weights = TimeDistributed(Dense(output_dim=1))(span_begin_input)
+        span_begin_input = Concatenate()([final_merged_passage, modeled_passage])
+        span_begin_weights = TimeDistributed(Dense(units=1))(span_begin_input)
         # Shape: (batch_size, num_passage_words)
         span_begin_probabilities = MaskedSoftmax(name="span_begin_softmax")(span_begin_weights)
 
@@ -189,34 +185,36 @@ class BidirectionalAttentionFlow(TextTrainer):
         final_seq2seq = self._get_seq2seq_encoder(name="final_seq2seq",
                                                   fallback_behavior="use default params")
         span_end_representation = final_seq2seq(span_end_representation)
-        span_end_input = merge([final_merged_passage, span_end_representation], mode='concat')
-        span_end_weights = TimeDistributed(Dense(output_dim=1))(span_end_input)
+        span_end_input = Concatenate()([final_merged_passage, span_end_representation])
+        span_end_weights = TimeDistributed(Dense(units=1))(span_end_input)
         span_end_probabilities = MaskedSoftmax(name="span_end_softmax")(span_end_weights)
 
-        return DeepQaModel(input=[question_input, passage_input],
-                           output=[span_begin_probabilities, span_end_probabilities])
+        return DeepQaModel(inputs=[question_input, passage_input],
+                           outputs=[span_begin_probabilities, span_end_probabilities])
 
     def _instance_type(self):  # pylint: disable=no-self-use
         return CharacterSpanInstance
 
     @overrides
-    def _get_max_lengths(self) -> Dict[str, int]:
-        max_lengths = super(BidirectionalAttentionFlow, self)._get_max_lengths()
-        max_lengths['num_passage_words'] = self.num_passage_words
-        max_lengths['num_question_words'] = self.num_question_words
-        return max_lengths
+    def _get_padding_lengths(self) -> Dict[str, int]:
+        padding_lengths = super(BidirectionalAttentionFlow, self)._get_padding_lengths()
+        padding_lengths['num_passage_words'] = self.num_passage_words
+        padding_lengths['num_question_words'] = self.num_question_words
+        return padding_lengths
 
     @overrides
-    def _set_max_lengths(self, max_lengths: Dict[str, int]):
+    def _set_padding_lengths(self, padding_lengths: Dict[str, int]):
         # Adding this because we're bypassing num_sentence_words in our model, but TextTrainer
         # expects it.
-        max_lengths['num_sentence_words'] = None
-        super(BidirectionalAttentionFlow, self)._set_max_lengths(max_lengths)
-        self.num_passage_words = max_lengths['num_passage_words']
-        self.num_question_words = max_lengths['num_question_words']
+        padding_lengths['num_sentence_words'] = None
+        super(BidirectionalAttentionFlow, self)._set_padding_lengths(padding_lengths)
+        if self.num_passage_words is None:
+            self.num_passage_words = padding_lengths['num_passage_words']
+        if self.num_question_words is None:
+            self.num_question_words = padding_lengths['num_question_words']
 
     @overrides
-    def _set_max_lengths_from_model(self):
+    def _set_padding_lengths_from_model(self):
         self.num_question_words = self.model.get_input_shape_at(0)[0][1]
         self.num_passage_words = self.model.get_input_shape_at(0)[1][1]
         # We need to pass this slice of the passage input shape to the superclass
@@ -224,7 +222,7 @@ class BidirectionalAttentionFlow(TextTrainer):
         # the passage input or the question input is arbitrary, as the
         # two word lengths are guaranteed to be the same and BiDAF ignores
         # self.num_sentence_words.
-        self.set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][1:])
+        self._set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][1:])
 
     @classmethod
     def _get_custom_objects(cls):
@@ -236,18 +234,6 @@ class BidirectionalAttentionFlow(TextTrainer):
         custom_objects["Repeat"] = Repeat
         custom_objects["WeightedSum"] = WeightedSum
         return custom_objects
-
-    @overrides
-    def score_instance(self, instance: CharacterSpanInstance):
-        inputs, _ = self._prepare_instance(instance)
-        try:
-            span_begin_probs, span_end_probs = self.model.predict(inputs)
-            span_indices = self.get_best_span(span_begin_probs,
-                                              span_end_probs)
-            return span_indices
-        except:
-            print('Inputs were: ' + str(inputs))
-            raise
 
     @staticmethod
     def get_best_span(span_begin_probs, span_end_probs):

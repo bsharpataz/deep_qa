@@ -1,10 +1,10 @@
-from keras.layers import Layer
 from overrides import overrides
 
-from ...tensors.backend import cumulative_sum
+from keras import backend as K
+from ..masked_layer import MaskedLayer
 
 
-class Envelope(Layer):
+class Envelope(MaskedLayer):
     """
     Given a probability distribution over a begin index and an end index of some sequence, this
     ``Layer`` computes an envelope over the sequence, a probability that each element lies within
@@ -12,8 +12,8 @@ class Envelope(Layer):
 
     Specifically, the computation done here is the following::
 
-        after_span_begin = cumulative_sum(span_begin)
-        after_span_end = cumulative_sum(span_end)
+        after_span_begin = K.cumsum(span_begin, axis=-1)
+        after_span_end = K.cumsum(span_end, axis=-1)
         before_span_end = 1 - after_span_end
         envelope = after_span_begin * before_span_end
 
@@ -34,7 +34,6 @@ class Envelope(Layer):
 
     """
     def __init__(self, **kwargs):
-        self.supports_masking = True
         super(Envelope, self).__init__(**kwargs)
 
     @overrides
@@ -43,14 +42,14 @@ class Envelope(Layer):
         return span_begin_mask if span_begin_mask is not None else span_end_mask
 
     @overrides
-    def get_output_shape_for(self, input_shape):
+    def compute_output_shape(self, input_shape):
         span_begin_shape, _ = input_shape
         return span_begin_shape
 
     @overrides
-    def call(self, x, mask=None):
-        span_begin, span_end = x
-        after_span_begin = cumulative_sum(span_begin)
-        after_span_end = cumulative_sum(span_end)
+    def call(self, inputs, mask=None):
+        span_begin, span_end = inputs
+        after_span_begin = K.cumsum(span_begin, axis=-1)
+        after_span_end = K.cumsum(span_end, axis=-1)
         before_span_end = 1.0 - after_span_end
         return after_span_begin * before_span_end

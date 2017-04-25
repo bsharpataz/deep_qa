@@ -4,7 +4,7 @@ from keras.layers import Input
 from keras.models import Model
 
 from deep_qa.layers.entailment_models import MultipleChoiceTupleEntailment
-from deep_qa.layers.time_distributed_embedding import TimeDistributedEmbedding
+from deep_qa.layers import TimeDistributedEmbedding
 
 class TestTupleAlignment:
     def test_tuple_alignment_does_not_crash(self):
@@ -24,10 +24,10 @@ class TestTupleAlignment:
         embedded_question = embedding(question_input_layer)
         embedded_answer = embedding(answer_input_layer)
         embedded_knowledge = embedding(knowledge_input_layer)
-        entailment_layer = MultipleChoiceTupleEntailment({})
+        entailment_layer = MultipleChoiceTupleEntailment()
         entailment_scores = entailment_layer([embedded_knowledge, embedded_question, embedded_answer])
-        model = Model(input=[knowledge_input_layer, question_input_layer, answer_input_layer],
-                      output=entailment_scores)
+        model = Model(inputs=[knowledge_input_layer, question_input_layer, answer_input_layer],
+                      outputs=entailment_scores)
         model.compile(loss="mse", optimizer="sgd")  # Will not train this model
         knowledge_input = numpy.random.randint(0, vocabulary_size, (batch_size, num_tuples, tuple_size))
         question_input = numpy.random.randint(0, vocabulary_size, (batch_size, question_length))

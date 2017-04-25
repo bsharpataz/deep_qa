@@ -1,12 +1,14 @@
 # pylint: disable=no-self-use,invalid-name
-from deep_qa.models.reading_comprehension.gated_attention_reader import GatedAttentionReader
+
+from deep_qa.models.reading_comprehension import GatedAttentionReader
+from deep_qa.common.params import Params
 from ...common.test_case import DeepQaTestCase
 
 
 class TestGatedAttention(DeepQaTestCase):
     def test_cloze_train_does_not_crash(self):
         self.write_who_did_what_files()
-        args = {
+        args = Params({
                 'save_models': True,
                 "qd_common_feature": True,
                 "gating_function": "+",
@@ -18,35 +20,35 @@ class TestGatedAttention(DeepQaTestCase):
                 "encoder": {
                         "word": {
                                 "type": "bi_gru",
-                                "output_dim": 2,
+                                "units": 2,
                         }
                 },
                 "seq2seq_encoder": {
                         "question_0": {
                                 "type": "bi_gru",
                                 "encoder_params": {
-                                        "output_dim": 3
+                                        "units": 3
                                 },
                                 "wrapper_params": {}
                         },
                         "document_0": {
                                 "type": "bi_gru",
                                 "encoder_params": {
-                                        "output_dim": 3
+                                        "units": 3
                                 },
                                 "wrapper_params": {}
                         },
                         "document_final": {
                                 "type": "bi_gru",
                                 "encoder_params": {
-                                        "output_dim": 3
+                                        "units": 3
                                 },
                                 "wrapper_params": {}
                         },
                         "question_final": {
                                 "type": "bi_gru",
                                 "encoder_params": {
-                                        "output_dim": 3
+                                        "units": 3
                                 },
                                 "wrapper_params": {
                                         "merge_mode": None
@@ -54,7 +56,7 @@ class TestGatedAttention(DeepQaTestCase):
                         }
                 },
                 "embedding_dim": {"words": 4, "characters": 4},
-        }
+        })
         model, loaded_model = self.ensure_model_trains_and_loads(GatedAttentionReader, args)
         # verify that the gated attention function was set properly
         assert model.gating_function == "+"
@@ -66,7 +68,7 @@ class TestGatedAttention(DeepQaTestCase):
 
     def test_non_cloze_train_does_not_crash(self):
         self.write_who_did_what_files()
-        args = {
+        args = Params({
                 'save_models': True,
                 "qd_common_feature": True,
                 "num_gated_attention_layers": 2,
@@ -77,11 +79,11 @@ class TestGatedAttention(DeepQaTestCase):
                 "encoder": {
                         "word": {
                                 "type": "bi_gru",
-                                "output_dim": 2,
+                                "units": 2,
                         },
                         "question_final": {
                                 "type": "bi_gru",
-                                "output_dim": 3
+                                "units": 3
                         }
 
                 },
@@ -89,27 +91,27 @@ class TestGatedAttention(DeepQaTestCase):
                         "question_0": {
                                 "type": "bi_gru",
                                 "encoder_params": {
-                                        "output_dim": 3
+                                        "units": 3
                                 },
                                 "wrapper_params": {}
                         },
                         "document_0": {
                                 "type": "bi_gru",
                                 "encoder_params": {
-                                        "output_dim": 3
+                                        "units": 3
                                 },
                                 "wrapper_params": {}
                         },
                         "document_final": {
                                 "type": "bi_gru",
                                 "encoder_params": {
-                                        "output_dim": 3
+                                        "units": 3
                                 },
                                 "wrapper_params": {}
                         }
                 },
                 "embedding_dim": {"words": 4, "characters": 4},
-        }
+        })
         model, loaded_model = self.ensure_model_trains_and_loads(GatedAttentionReader, args)
         # verify that the gated attention function was set properly
         assert model.gating_function == "+"

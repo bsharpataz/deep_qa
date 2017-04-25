@@ -1,20 +1,22 @@
 # pylint: disable=no-self-use
+from flaky import flaky
 import numpy
 from numpy.testing import assert_array_almost_equal
 from keras import backend as K
+from keras.initializers import Constant
 from keras.layers import Input
 from keras.models import Model
 from keras import activations
 
 from deep_qa.tensors.backend import apply_feed_forward
-from deep_qa.layers.time_distributed_embedding import TimeDistributedEmbedding
-from deep_qa.layers.tuple_matchers.threshold_tuple_matcher import ThresholdTupleMatcher
+from deep_qa.layers import TimeDistributedEmbedding
+from deep_qa.layers.tuple_matchers import ThresholdTupleMatcher
 from ...common.test_case import DeepQaTestCase
 
 
-class TestSlotSimilarityTupleMatcher(DeepQaTestCase):
+class TestThresholdTupleMatcher(DeepQaTestCase):
     def setUp(self):
-        super(TestSlotSimilarityTupleMatcher, self).setUp()
+        super(TestThresholdTupleMatcher, self).setUp()
         self.num_slots = 3
         self.num_words = 5
         self.embed_dimension = 4
@@ -40,16 +42,12 @@ class TestSlotSimilarityTupleMatcher(DeepQaTestCase):
         # This should result in 1 matched word in slot 1, and two in slot 2
         # So the normalized overlaps should be (0, 1/5,  2/5)
 
+    @flaky
     def test_general_case(self):
-        # Custom initialization for this test to account for rounding in the cosine similarity.
-        # pylint: disable=unused-argument
-        def custom_initialization(shape, name=None):
-            return K.ones(shape) * 0.999
-
         match_layer = ThresholdTupleMatcher({"type": "cosine_similarity"},
                                             self.num_hidden_layers,
                                             self.hidden_layer_width,
-                                            initialization=custom_initialization,
+                                            initialization=Constant(.999),
                                             hidden_layer_activation=self.hidden_layer_activation)
         output = match_layer([self.tuple1_input, self.tuple2_input])
         model = Model([self.tuple1_input, self.tuple2_input], output)
@@ -67,7 +65,6 @@ class TestSlotSimilarityTupleMatcher(DeepQaTestCase):
                                                                              match_layer.score_layer))
         result = model.predict([self.tuple1, self.tuple2])
         assert_array_almost_equal(result, K.eval(desired_result))
-
 
     def test_returns_masks_correctly(self):
         # Test when one tuple is all padding.
@@ -102,11 +99,6 @@ class TestSlotSimilarityTupleMatcher(DeepQaTestCase):
         assert calculated_mask_include.shape == (1, 1,)
 
     def test_handles_input_masks_correctly(self):
-        # Custom initialization for this test to account for rounding in the cosine similarity.
-        # pylint: disable=unused-variable,unused-argument
-        def custom_initialization(shape, name=None):
-            return K.ones(shape) * 0.999
-
         num_slots = 3
         num_words = 5
         embed_dimension = 4
@@ -120,7 +112,7 @@ class TestSlotSimilarityTupleMatcher(DeepQaTestCase):
         match_layer = ThresholdTupleMatcher({"type": "cosine_similarity"},
                                             self.num_hidden_layers,
                                             self.hidden_layer_width,
-                                            initialization=custom_initialization,
+                                            initialization=Constant(.999),
                                             hidden_layer_activation=self.hidden_layer_activation)
         output = match_layer([embedded_masked_tuple1, embedded_masked_tuple2])
         mask_model = Model([tuple1_word_input, tuple2_word_input], output)
