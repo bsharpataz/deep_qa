@@ -349,6 +349,7 @@ class Trainer:
 
         # If there are test files, we evaluate on the test data.
         if self.test_files:
+            self.load_model()
             logger.info("Evaluting model on the test set.")
             if isinstance(self.test_arrays, tuple):
                 scores = self.model.evaluate(self.test_arrays[0], self.test_arrays[1])
@@ -610,6 +611,7 @@ class Trainer:
         from shutil import copyfile
         epoch_weight_file = "%s_weights_epoch=%d.h5" % (self.model_prefix, self.best_epoch)
         final_weight_file = "%s_weights.h5" % self.model_prefix
+        print("Copying", epoch_weight_file, "to", final_weight_file)
         copyfile(epoch_weight_file, final_weight_file)
         logger.info("Saved the best model to %s", final_weight_file)
 

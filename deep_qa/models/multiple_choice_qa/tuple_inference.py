@@ -5,6 +5,7 @@ import textwrap
 from keras.layers import Input, Layer
 from overrides import overrides
 import numpy
+import re
 
 from deep_qa.data.instances.tuple_inference_instance import TupleInferenceInstance
 from deep_qa.data.instances.graph_align_instance import GraphAlignInstance
@@ -18,6 +19,7 @@ from ...layers.wrappers.time_distributed_with_mask import TimeDistributedWithMas
 from ...training.models import DeepQaModel
 from ...training.text_trainer import TextTrainer
 from ...common.params import get_choice_with_default
+from ...layers.backend.max import Max
 
 from keras import backend as K
 
@@ -186,8 +188,6 @@ class TupleInferenceModel(TextTrainer):
         # GraphAlign shape: (batch size, 1)
         #background_input_shape = (self.num_background_tuples, self.num_tuple_slots) + slot_shape
         background_input = Input(background_input_shape, dtype=input_dtype, name='background_input')
-        print("K.int_shape(question_input):", K.int_shape(question_input))
-        print("K.int_shape(background_input)", K.int_shape(background_input))
 
         if self.instance_choice == "graph_align_instance":
             tiled_question = question_input
@@ -210,19 +210,18 @@ class TupleInferenceModel(TextTrainer):
             # GA becomes: (batch size, num_options, num_graphlets, num_alignments, 1)
             tiled_background = Repeat(axis=3, repetitions=self.num_tuple_slots)(tiled_background)
 
-        print("K.int_shape(tiled_question): ", K.int_shape(tiled_question))
-        print("K.int_shape(tiled_bg):", K.int_shape(tiled_background))
         # Find the matches between the question and background tuples.
         # shape: (batch size, num_options, num_question_tuples, num_background_tuples)
         matches = self.tuple_matcher([tiled_question, tiled_background])
-        print("K.int_shape(matches):", K.int_shape(matches))
 
         # Find the probability that any given question tuple is entailed by the given background tuples.
         # shape: (batch size, num_options, num_question_tuples)
         combine_background_evidence = NoisyOr(axis=-1, param_init=self.noisy_or_param_init)
         combine_background_evidence.name = "noisy_or_1"
+        max_layer = Max(axis=-1)
+
         qi_probabilities = combine_background_evidence(matches)
-        print("K.int_shape(qi_probs):", K.int_shape(qi_probabilities))
+        # qi_probabilities = max_layer(matches)
 
         if self.instance_choice == "graph_align_instance":
             options_probabilities = qi_probabilities
@@ -243,13 +242,13 @@ class TupleInferenceModel(TextTrainer):
     def _instance_debug_output(self, instance: TupleInferenceInstance, outputs: Dict[str, numpy.array]) -> str:
         num_to_display = 5
         result = ""
-        result += "\n====================================================================\n"
-        result += "Instance: %s\n" % instance.index
-        result += "Question Text: %s\n" % instance.question_text
-        result += "Label: %s\n" % instance.label
-        result += "Num tuples per answer option: %s\n" % [len(answer) for answer in instance.answer_tuples]
-        result += "(limiting display to top %s at various levels)\n" % num_to_display
-        result += "====================================================================\n"
+        #result += "\n====================================================================\n"
+        #result += "Instance: %s\n" % instance.index
+        #result += "Question Text: %s\n" % instance.question_text
+        #result += "Label: %s\n" % instance.label
+        #result += "Num tuples per answer option: %s\n" % [len(answer) for answer in instance.answer_tuples]
+        #result += "(limiting display to top %s at various levels)\n" % num_to_display
+        #result += "====================================================================\n"
 
         answer_scores = []
         index_of_chosen = None
@@ -260,14 +259,30 @@ class TupleInferenceModel(TextTrainer):
             # TODO(becky): not handling ties
             index_of_chosen = sorted_answer_scores[0][0]
 
-        result += "Final scores: %s\n" % answer_scores
-        if index_of_chosen is None:
-            result += "ERROR: no answer chosen\n"
-        elif index_of_chosen == instance.label:
-            result += "  Answered correctly!\n"
-        else:
-            result += "  Answered incorrectly\n"
-        result += "====================================================================\n"
+        #result += "Final scores: %s\n" % answer_scores
+        instance_pAt1 = None
+        # if index_of_chosen is None:
+        #     result += "ERROR: no answer chosen\n"
+        # elif index_of_chosen == instance.label:
+        #     result += "  Answered correctly!\n"
+        #     instance_pAt1 = 1.0
+        # else:
+        #     result += "  Answered incorrectly\n"
+        #     instance_pAt1 = 0.0
+        # result += "QID[{0}] accuracy = {1}\n".format(instance.index, instance_pAt1)
+
+        split_question = re.sub("\([ABCD]\)", "<>", instance.question_text).split("<>")
+        question_only_text = split_question[0].strip()
+        answer_texts = [text.strip() for text in split_question[1:]]
+
+        for index in range(len(answer_scores)):
+            if index < len(answer_texts):
+                answer_text = answer_texts[index]
+            else:
+                answer_text = "--"
+            score = answer_scores[index][1]
+            result += "\t".join([question_only_text, str(index), answer_text, str(score)]) + "\n"
+        #result += "====================================================================\n"
 
         # Output of the tuple matcher layer:
         # shape: (num_options, num_question_tuples, num_background_tuples)
@@ -303,7 +318,7 @@ class TupleInferenceModel(TextTrainer):
                                                               background_tuples,
                                                               tuple_matcher_output[option],
                                                               instance)
-        result += "\n"
+        #result += "\n"
 
         return result
 

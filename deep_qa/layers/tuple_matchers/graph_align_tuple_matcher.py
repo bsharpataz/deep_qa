@@ -102,7 +102,9 @@ class GraphAlignTupleMatcher(MaskedLayer):
         # the shape of the returned mask is (batch size, 1).
         input1 = input[0]
         mask = K.cast(K.any(input1, axis=1), 'uint8')
-        return K.cast(mask, 'bool')
+        return K.cast(K.expand_dims(mask), 'bool')
+        # return K.cast(mask, 'bool')
+        # return None
 
     def get_output_mask_shape_for(self, input_shape):  # pylint: disable=no-self-use
         # input_shape is [(batch_size, num_features), (batch_size, 1)]

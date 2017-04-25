@@ -10,6 +10,9 @@ import random
 import numpy
 random.seed(13370)
 numpy.random.seed(1337)
+# random.seed(13372)
+# numpy.random.seed(13372)
+
 
 # pylint: disable=wrong-import-position
 

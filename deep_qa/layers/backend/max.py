@@ -28,6 +28,9 @@ class Max(MaskedLayer):
         # pylint: disable=unused-argument
         if mask is None:
             return None
+        if K.ndim(mask) == K.ndim(inputs) + 1 and K.int_shape(mask)[-1] == 1:
+            mask = K.squeeze(mask, axis=-1)
+        print("MAX compute_mask, returns shape:", K.int_shape(K.any(mask, axis=self.axis)))
         return K.any(mask, axis=self.axis)
 
     @overrides
@@ -40,6 +43,9 @@ class Max(MaskedLayer):
     @overrides
     def call(self, inputs, mask=None):
         if mask is not None:
+            print("MAX: int_shape mask:", K.int_shape(mask))
+            if K.ndim(mask) == K.ndim(inputs) + 1 and K.int_shape(mask)[-1] == 1:
+                mask = K.squeeze(mask, axis=-1)
             inputs = switch(mask, inputs, very_negative_like(inputs))
         return K.max(inputs, axis=self.axis)
 

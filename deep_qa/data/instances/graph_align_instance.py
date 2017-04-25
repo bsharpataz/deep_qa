@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Dict, List
 
 import numpy
+import re
 from overrides import overrides
 
 from .instance import TextInstance, IndexedInstance
@@ -39,6 +40,9 @@ class GraphAlignInstance(TextInstance):
         super(GraphAlignInstance, self).__init__(label, index)
         self.answer_graphlets = answer_graphlets
         self.question_text = question_text
+        split_question = re.sub("\([ABCD]\)", "<>", self.question_text)
+        self.question_only_text = split_question[0].strip()
+        self.answer_texts = [text.strip() for text in split_question[1:]]
 
     @overrides
     def words(self) -> Dict[str, List[str]]:
@@ -108,7 +112,8 @@ class GraphAlignInstance(TextInstance):
         label = int(label)
         if label >= len(answer_graphlets):
             raise ConfigurationError("Invalid label, label {0} is >= the number "
-                                     "of answers ({1}).".format(label, len(answer_graphlets)))
+                                     "of answers ({1}).\n(Fields of line:\n{2})".format(label, len(answer_graphlets),
+                                                                                      "\n".join(fields)))
 
         return cls(answer_graphlets, question_text, label=label, index=index)
 
