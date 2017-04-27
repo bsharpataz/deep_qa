@@ -1,5 +1,4 @@
 import codecs
-from collections import OrderedDict
 import itertools
 import logging
 from typing import Dict, List
@@ -7,9 +6,6 @@ from typing import Dict, List
 import tqdm
 
 from .instances.instance import Instance, TextInstance, IndexedInstance
-from .instances.background_instance import BackgroundInstance
-from .instances.labeled_background_instance import LabeledBackgroundInstance
-from .instances.multiple_true_false_instance import MultipleTrueFalseInstance
 from .data_indexer import DataIndexer
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -30,31 +26,6 @@ class Dataset:
         class that call the constructor, such as `merge()` and `truncate()`.
         """
         self.instances = instances
-
-    def can_be_converted_to_multiple_choice(self):
-        """
-        This method checks that dataset matches the assumptions we make about question data: that
-        it is a list of sentences corresponding to four-choice questions, with one correct answer
-        for every four instances.
-
-        So, specifically, we check that the number of instances is a multiple of four, and we check
-        that each group of four instances has exactly one instance with label True, and all other
-        labels are False (i.e., no None labels for validation data).
-        """
-        for instance in self.instances:
-            if isinstance(instance, MultipleTrueFalseInstance):
-                return False
-        if len(self.instances) % 4 != 0:
-            return False
-        questions = zip(*[self.instances[i::4] for i in range(4)])
-        for question in questions:
-            question_labels = [instance.label for instance in question]
-            label_counts = {x: question_labels.count(x) for x in set(question_labels)}
-            if label_counts[True] != 1:
-                return False
-            if label_counts[False] != 3:
-                return False
-        return True
 
     def merge(self, other: 'Dataset') -> 'Dataset':
         """
@@ -97,23 +68,15 @@ class TextDataset(Dataset):
         indexed_instances = [instance.to_indexed_instance(data_indexer) for instance in tqdm.tqdm(self.instances)]
         return IndexedDataset(indexed_instances)
 
-    def to_question_dataset(self) -> 'Dataset':
-        assert self.can_be_converted_to_multiple_choice()
-        questions = zip(*[self.instances[i::4] for i in range(4)])
-        question_instances = []
-        for question in questions:
-            question_instances.append(MultipleTrueFalseInstance(question))
-        return TextDataset(question_instances)
-
     @staticmethod
-    def read_from_file(filename: str, instance_class, label: bool=None):
+    def read_from_file(filename: str, instance_class):
         lines = [x.strip() for x in tqdm.tqdm(codecs.open(filename, "r",
                                                           "utf-8").readlines())]
-        return TextDataset.read_from_lines(lines, instance_class, label)
+        return TextDataset.read_from_lines(lines, instance_class)
 
     @staticmethod
-    def read_from_lines(lines: List[str], instance_class, label: bool=None):
-        instances = [instance_class.read_from_line(x, label) for x in lines]
+    def read_from_lines(lines: List[str], instance_class):
+        instances = [instance_class.read_from_line(x) for x in lines]
         labels = [(x.label, x) for x in instances]
         labels.sort(key=lambda x: str(x[0]))
         label_counts = [(label, len([x for x in group]))
@@ -123,64 +86,6 @@ class TextDataset(Dataset):
             label_count_str = label_count_str[:100] + '...'
         logger.info("Finished reading dataset; label counts: %s", label_count_str)
         return TextDataset(instances)
-
-    @staticmethod
-    def read_background_from_file(dataset: 'TextDataset', filename: str, background_class):
-        """
-        Reads a file formatted as background information and matches the background to the
-        sentences in the given dataset.  The given dataset must have instance indices, so we can
-        match the background information in the file to the instances in the dataset.
-
-        The format for the file is assumed to be the following:
-        [sentence index][tab][background 1][tab][background 2][tab][...]
-        where [sentence index] corresponds to the index of one of the instances in `dataset`.
-
-        This code will also work if the data is formatted simply as [index][tab][sentence], one per
-        line.
-        """
-        new_instances = OrderedDict()
-        for instance in dataset.instances:
-            background_instance = BackgroundInstance(instance, [])
-            new_instances[instance.index] = background_instance
-        for line in codecs.open(filename, "r", "utf-8"):
-            fields = line.strip().split("\t")
-            index = int(fields[0])
-            if index in new_instances:
-                instance = new_instances[index]
-                for sequence in fields[1:]:
-                    instance.background.append(background_class.read_from_line(sequence, None))
-        return TextDataset(list(new_instances.values()))
-
-    @staticmethod
-    def read_labeled_background_from_file(dataset: 'TextDataset', filename: str) -> 'TextDataset':
-        """
-        Reads a file formatted as labeled background information and matches the background to the
-        sentences in the given dataset.  The given dataset must have instance indices, so we can
-        match the background information in the file to the instances in the dataset.
-
-        This is like read_background_from_file(), except we create LabeledBackgroundInstances
-        instead of BackgroundInstances.
-
-        The format for the file is assumed to be the following:
-        [sentence index][tab][correct background indices][tab][background 1][tab][background 2][tab][...]
-        where [sentence index] corresponds to the index of one of the instances in `dataset`, and
-        [correct background indices] is a comma-separated list of (0-indexed) integers, pointing to
-        the background sentences which are positive examples.
-        """
-        new_instances = {}
-        for instance in dataset.instances:
-            background_instance = LabeledBackgroundInstance(instance, [], [])
-            new_instances[instance.index] = background_instance
-        for line in codecs.open(filename, "r", "utf-8"):
-            fields = line.strip().split("\t")
-            index = int(fields[0])
-            correct_background_indices = [int(x) for x in fields[1].split(',')]
-            if index in new_instances:
-                instance = new_instances[index]
-                instance.label = correct_background_indices
-                for sequence in fields[2:]:
-                    instance.background.append(sequence)
-        return TextDataset(list(new_instances.values()))
 
 
 class IndexedDataset(Dataset):
@@ -193,45 +98,82 @@ class IndexedDataset(Dataset):
     def __init__(self, instances: List[IndexedInstance]):
         super(IndexedDataset, self).__init__(instances)
 
-    def max_lengths(self):
-        max_lengths = {}
-        lengths = [instance.get_lengths() for instance in self.instances]
-        if not lengths:
-            return max_lengths
-        for key in lengths[0]:
-            max_lengths[key] = max(x[key] if key in x else 0 for x in lengths)
-        return max_lengths
-
-    def pad_instances(self, max_lengths: Dict[str, int]=None):
+    def sort_by_padding(self, sorting_keys: List[str]):
         """
-        Make all of the IndexedInstances in the dataset have the same length by padding them (in
-        the front) with zeros.
+        Sorts the ``Instances`` in this ``Dataset`` by their padding lengths, using the keys in
+        ``sorting_keys`` (in the order in which they are provided).
+        """
+        instances_with_lengths = []
+        for instance in self.instances:
+            padding_lengths = instance.get_padding_lengths()
+            instance_with_lengths = [padding_lengths[key] for key in sorting_keys] + [instance]
+            instances_with_lengths.append(instance_with_lengths)
+        instances_with_lengths.sort(key=lambda x: x[:-1])
+        self.instances = [instance_with_lengths[-1] for instance_with_lengths in instances_with_lengths]
 
-        If max_length is given for a particular dimension, we will pad all instances to that length
-        (including left-truncating instances if necessary).  If not, we will find the longest
-        instance and pad all instances to that length.  Note that max_lengths is a _List_, not an
-        int - there could be several dimensions on which we need to pad, depending on what kind of
-        instance we are dealing with.
+    def padding_lengths(self):
+        padding_lengths = {}
+        lengths = [instance.get_padding_lengths() for instance in self.instances]
+        if not lengths:
+            return padding_lengths
+        for key in lengths[0]:
+            padding_lengths[key] = max(x[key] if key in x else 0 for x in lengths)
+        return padding_lengths
 
-        This method _modifies_ the current object, it does not return a new IndexedDataset.
+    def pad_instances(self, padding_lengths: Dict[str, int]=None, verbose: bool=True):
+        """
+        Makes all of the ``IndexedInstances`` in the dataset have the same length by padding them.
+        This ``Dataset`` object doesn't know what things there are in the ``Instance`` to pad, but
+        the ``Instances`` do, and so does the model that called us, passing in a
+        ``padding_lengths`` dictionary.  The keys in that dictionary must match the lengths that
+        the ``Instance`` knows about.
+
+        Given that, this method does two things: (1) it asks each of the ``Instances`` what their
+        padding lengths are, and takes a max (using :func:`~IndexedDataset.padding_lengths()`).  It
+        then reconciles those values with the ``padding_lengths`` we were passed as an argument to
+        this method, and pads the instances with :func:`IndexedInstance.pad()`.  If
+        ``padding_lengths`` has a particular key specified with a value, that value takes
+        precedence over whatever we computed in our data.  TODO(matt): with dynamic padding, we
+        should probably have this be a max padding length, not a hard setting, but that requires
+        some API changes.
+
+        This method `modifies` the current object, it does not return a new ``IndexedDataset``.
+
+        Parameters
+        ----------
+        padding_lengths: Dict[str, int]
+            If a key is present in this dictionary with a non-`None` value, we will pad to that
+            length instead of the length calculated from the data.  This lets you, e.g., set a
+            maximum value for sentence length, or word length, if you want to throw out long
+            sequences.
+        verbose: bool, optional (default=True)
+            Should we output logging information when we're doing this padding?  If the dataset is
+            large, this is nice to have, because padding a large dataset could take a long time.
+            But if you're doing this inside of a data generator, having all of this output per
+            batch is a bit obnoxious.
         """
         # First we need to decide _how much_ to pad.  To do that, we find the max length for all
         # relevant padding decisions from the instances themselves.  Then we check whether we were
         # given a max length for a particular dimension.  If we were, we use that instead of the
         # instance-based one.
-        logger.info("Getting max lengths from instances")
-        instance_max_lengths = self.max_lengths()
-        logger.info("Instance max lengths: %s", str(instance_max_lengths))
+        if verbose:
+            logger.info("Getting max lengths from instances")
+        instance_padding_lengths = self.padding_lengths()
+        if verbose:
+            logger.info("Instance max lengths: %s", str(instance_padding_lengths))
         lengths_to_use = {}
-        for key in instance_max_lengths:
-            if max_lengths and max_lengths[key] is not None:
-                lengths_to_use[key] = max_lengths[key]
+        for key in instance_padding_lengths:
+            if padding_lengths and padding_lengths[key] is not None:
+                lengths_to_use[key] = padding_lengths[key]
             else:
-                lengths_to_use[key] = instance_max_lengths[key]
-
-        logger.info("Now actually padding instances to length: %s", str(lengths_to_use))
-        for instance in tqdm.tqdm(self.instances):
-            instance.pad(lengths_to_use)
+                lengths_to_use[key] = instance_padding_lengths[key]
+        if verbose:
+            logger.info("Now actually padding instances to length: %s", str(lengths_to_use))
+            for instance in tqdm.tqdm(self.instances):
+                instance.pad(lengths_to_use)
+        else:
+            for instance in self.instances:
+                instance.pad(lengths_to_use)
 
     def as_training_data(self):
         """

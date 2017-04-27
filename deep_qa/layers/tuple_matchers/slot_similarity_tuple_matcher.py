@@ -2,16 +2,16 @@ from copy import deepcopy
 from typing import Any, Dict
 
 from keras import backend as K
-from keras.layers import Layer
-from keras import initializations, activations
+from keras import initializers, activations
 from overrides import overrides
 
+from ...common.params import pop_choice
 from ...tensors.backend import apply_feed_forward
-from ...common.params import get_choice_with_default
 from ...tensors.similarity_functions import similarity_functions
+from ..masked_layer import MaskedLayer
 
 
-class SlotSimilarityTupleMatcher(Layer):
+class SlotSimilarityTupleMatcher(MaskedLayer):
     """
     Like other ``TupleMatch`` layers, this layer takes as input two tensors corresponding to two tuples,
     an answer tuple and a background tuple, and calculates the degree to which the background tuple
@@ -67,18 +67,21 @@ class SlotSimilarityTupleMatcher(Layer):
         self.hidden_layer_init = initialization
         self.hidden_layer_activation = hidden_layer_activation
         self.final_activation = final_activation
-        self.hidden_layer_weights = []
-        self.score_layer = None
-        super(SlotSimilarityTupleMatcher, self).__init__(**kwargs)
         self.similarity_function_params = deepcopy(similarity_function)
+        super(SlotSimilarityTupleMatcher, self).__init__(**kwargs)
+
         if similarity_function is None:
             similarity_function = {}
-        sim_function_choice = get_choice_with_default(similarity_function,
-                                                      'type',
-                                                      list(similarity_functions.keys()))
+        sim_function_choice = pop_choice(similarity_function, 'type',
+                                         list(similarity_functions.keys()),
+                                         default_to_first_choice=True)
         similarity_function['name'] = self.name + '_similarity_function'
         self.similarity_function = similarity_functions[sim_function_choice](**similarity_function)
 
+        self.hidden_layer_weights = []
+        self.score_layer = None
+
+    @overrides
     def get_config(self):
         base_config = super(SlotSimilarityTupleMatcher, self).get_config()
         config = {'similarity_function': self.similarity_function_params,
@@ -90,10 +93,12 @@ class SlotSimilarityTupleMatcher(Layer):
         config.update(base_config)
         return config
 
-    def get_output_shape_for(self, input_shapes):
+    @overrides
+    def compute_output_shape(self, input_shapes):
         # pylint: disable=unused-argument
         return (input_shapes[0][0], 1)
 
+    @overrides
     def build(self, input_shape):
         super(SlotSimilarityTupleMatcher, self).build(input_shape)
 
@@ -101,13 +106,13 @@ class SlotSimilarityTupleMatcher(Layer):
         hidden_layer_input_dim = input_shape[0][1]
         for i in range(self.num_hidden_layers):
             hidden_layer = self.add_weight(shape=(hidden_layer_input_dim, self.hidden_layer_width),
-                                           initializer=initializations.get(self.hidden_layer_init),
+                                           initializer=initializers.get(self.hidden_layer_init),
                                            name='%s_hiddenlayer_%d' % (self.name, i))
             self.hidden_layer_weights.append(hidden_layer)
             hidden_layer_input_dim = self.hidden_layer_width
         # Add the weights for the final layer.
         self.score_layer = self.add_weight(shape=(self.hidden_layer_width, 1),
-                                           initializer=initializations.get(self.hidden_layer_init),
+                                           initializer=initializers.get(self.hidden_layer_init),
                                            name='%s_score' % self.name)
 
     @overrides
@@ -119,16 +124,18 @@ class SlotSimilarityTupleMatcher(Layer):
             return None
         # Each of the two masks in input_mask are of shape: (batch size, num_slots)
         mask1, mask2 = input_mask
-        return K.any(mask1, axis=-1, keepdims=True) * K.any(mask2, axis=-1, keepdims=True)
+        mask1 = K.cast(K.any(mask1, axis=-1, keepdims=True), 'uint8')
+        mask2 = K.cast(K.any(mask2, axis=-1, keepdims=True), 'uint8')
+        return K.cast(mask1 * mask2, 'bool')
 
     def get_output_mask_shape_for(self, input_shape):  # pylint: disable=no-self-use
         # input_shape is [(batch_size, num_slots, embedding_dim), (batch_size, num_slots, embedding_dim)]
         mask_shape = (input_shape[0][0], 1)
         return mask_shape
 
-    def call(self, x, mask=None):
-        tuple1_input, tuple2_input = x      # tuple1 shape: (batch size, num_slots, encoding_dim)
-                                            # tuple2 shape: (batch size, num_slots, encoding_dim)
+    def call(self, inputs, mask=None):
+        tuple1_input, tuple2_input = inputs      # tuple1 shape: (batch size, num_slots, encoding_dim)
+                                                 # tuple2 shape: (batch size, num_slots, encoding_dim)
         # Check that the tuples have the same number of slots.
         assert K.int_shape(tuple1_input)[1] == K.int_shape(tuple2_input)[1]
 
@@ -137,6 +144,8 @@ class SlotSimilarityTupleMatcher(Layer):
         similarities = self.similarity_function.compute_similarity(tuple1_input, tuple2_input)
 
         # Remove any similarities if one of the corresponding slots was all padding.
+        if mask is None:
+            mask = [None, None]
         tuple1_mask, tuple2_mask = mask
         # Make a masked version of similarities which remomves similarities from slots which were all
         # padding in either tuple.

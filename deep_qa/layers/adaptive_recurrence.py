@@ -1,11 +1,10 @@
-from typing import Any, Dict
+from typing import Dict
 import tensorflow as tf
 
 from keras import backend as K
-from keras.layers import Layer
-from keras import initializations
 from keras.regularizers import l1
-from keras.engine import InputSpec
+
+from .masked_layer import MaskedLayer
 
 
 class AdaptiveRecurrence:
@@ -26,29 +25,26 @@ class AdaptiveRecurrence:
     debugging code within this repository, as all the parameters for intermediate layers will
     be assigned to the AdaptiveLayer.
 
-    Additionally, because Tensorflow (and Theano) build static computational graphs, this recurrence
+    Additionally, because Tensorflow builds static computational graphs, this recurrence
     method only supports Layers within it's adaptive step that share weights across memory network steps.
     The reason for this is because we don't know the number of steps we are going to do in advance,
     Tensorflow can't generate all the required weights. However, if weight sharing is used, Tensorflow
     can create one copy of the weights and although the number of iterations of the memory step is
     non-deterministic, the computational graph can be statically defined - we just loop over a part of it.
     '''
-    def __init__(self, memory_network: 'MemoryNetworkModel', params: Dict[str, Any]):
-        if K.backend() == 'theano':
-            raise Exception("You are trying to use an adaptive method for performing memory network "
-                            "steps using Keras with Theano as its backend. This recurrence method "
-                            "requires Keras to use Tensorflow as it's backend, as it has native "
-                            "tensorflow code mixed in which is not compatible with theano.")
-
+    # pylint: disable=unused-argument
+    def __init__(self, memory_network, params: Dict=None, **kwargs):
+        if params is None:
+            params = {}
         self.memory_network = memory_network
         self.adaptive_step_params = params
 
     def __call__(self, encoded_question, current_memory, encoded_knowledge):
-        adaptive_layer = AdaptiveStep(self.memory_network, self.adaptive_step_params)
+        adaptive_layer = AdaptiveStep(self.memory_network, **self.adaptive_step_params)
         return adaptive_layer([encoded_question, current_memory, encoded_knowledge])
 
 
-class AdaptiveStep(Layer):
+class AdaptiveStep(MaskedLayer):
     '''
     This layer implements a single step of the halting component of the Adaptive Computation Time algorithm,
     generalised so that it can be applied to any arbitrary function. Here, that function is a single memory network
@@ -67,27 +63,30 @@ class AdaptiveStep(Layer):
     probabilities, states and outputs from a timestep t's contribution if they have already reached
     1 - epsilon at a timestep s < t.
     '''
-    def __init__(self, memory_network: 'MemoryNetworkModel', layer_params: Dict[str, Any],
+    def __init__(self,
+                 memory_network,
+                 epsilon: float=0.01,
+                 max_computation: int=10,
+                 ponder_cost_strength: float=0.05,
                  initialization='glorot_uniform', name='adaptive_layer', **kwargs):
         # Dictates the value at which we halt the memory network steps (1 - epsilon).
         # Necessary so that the network can learn to halt after one step. If we didn't have
         # this, the first halting value is < 1 in practise as it is the output of a sigmoid.
-        self.epsilon = layer_params.pop("epsilon", 0.01)
+        self.epsilon = epsilon
         self.one_minus_epsilon = tf.constant(1.0 - self.epsilon, name='one_minus_epsilon')
         # Used to bound the number of memory network hops we do. Necessary to prevent
         # the network from learning that the loss it achieves can be minimised by
         # simply not stopping.
-        self.max_val = layer_params.pop("max_computation", 10)
-        self.max_computation = tf.constant(self.max_val, tf.float32, name='max_computation')
+        self.max_computation = tf.constant(max_computation, tf.float32, name='max_computation')
         # Regularisation coefficient for the ponder cost. In order to dictate how many steps you want
         # to take, we add |number of steps| to the training objective, in the same way as you might add
         # weight regularisation. This makes the model optimise performance whilst moderating the number
         # of steps it takes. This parameter is _extremely_ sensitive. Consider as well that this parameter
         # will affect the training time of your model, as it will take more steps if it is small. Bear this
         # in mind when doing grid searches over this parameter.
-        self.ponder_cost_strength = layer_params.pop("ponder_cost_strength", 0.05)
+        self.ponder_cost_strength = ponder_cost_strength
         self.memory_network = memory_network
-        self.init = initializations.get(initialization)
+        self.init = initialization
         self.name = name
         # Attributes to be defined when we build this layer.
         self.halting_weight = None
@@ -106,11 +105,14 @@ class AdaptiveStep(Layer):
         Here, we have to specify it manually as we want to build them in advance, rather than when they are
         called.
         '''
-        self.input_spec = [InputSpec(shape=input_shape[1])]
         input_dim = input_shape[1][-1]
 
-        self.halting_weight = self.init(((input_dim,) + (1,)), name='{}_halting_weight'.format(self.name))
-        self.halting_bias = self.init((), name='{}_halting_bias'.format(self.name))
+        self.halting_weight = self.add_weight(((input_dim,) + (1,)),
+                                              initializer=self.init,
+                                              name='{}_halting_weight'.format(self.name))
+        self.halting_bias = self.add_weight((),
+                                            initializer=self.init,
+                                            name='{}_halting_bias'.format(self.name))
         self.trainable_weights = [self.halting_weight, self.halting_bias]
 
         background_knowledge_shape = list(input_shape[2])
@@ -139,8 +141,8 @@ class AdaptiveStep(Layer):
         self.trainable_weights.extend(memory_updater.trainable_weights)
         super(AdaptiveStep, self).build(input_shape)
 
-    def call(self, x, mask=None):
-        encoded_question, current_memory, encoded_knowledge = x
+    def call(self, inputs, mask=None):
+        encoded_question, current_memory, encoded_knowledge = inputs
         # We need to create a tensor which doesn't have the encoding_dim dimension. So that this Layer is
         # independent of the dimension of the input tensors, we just sum over the last dimension to remove it.
         # We only use this to create variables, nothing else.
@@ -166,8 +168,7 @@ class AdaptiveStep(Layer):
 
         # Add the ponder cost variable as a regulariser to the loss function.
         ponder_cost = l1(self.ponder_cost_strength)
-        ponder_cost.set_param(hop_counter)
-        self.regularizers.append(ponder_cost)
+        self.add_loss(ponder_cost(hop_counter))
         # This actually does the computation of self.adaptive_memory_hop,
         # checking the condition at every step to see if it should stop.
 
@@ -290,7 +291,7 @@ class AdaptiveStep(Layer):
         use_probability = tf.expand_dims(halting_probability, -1)
         use_remainder = tf.expand_dims(1.0 - halting_accumulator, -1)
 
-        memory_update_weight = tf.select(not_final_iteration_condition, use_probability, use_remainder)
+        memory_update_weight = tf.where(not_final_iteration_condition, use_probability, use_remainder)
         expanded_batch_mask = tf.expand_dims(tf.cast(batch_mask, tf.float32), -1)
         memory_accumulator += current_memory * memory_update_weight * expanded_batch_mask
 
@@ -306,11 +307,11 @@ class AdaptiveStep(Layer):
                 memory_accumulator,
                 attended_knowledge]
 
-    def compute_mask(self, x, input_mask=None):  # pylint: disable=unused-argument
+    def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
         # We don't want to mask either of the outputs here, so we return None for both of them.
         return [None, None]
 
-    def get_output_shape_for(self, input_shapes):
+    def compute_output_shape(self, input_shapes):
         # We output two tensors from this layer, the final memory representation and
         # the attended knowledge from the final memory network step. Both have the same
         # shape as the initial memory vector, likely (samples, encoding_dim), which is
@@ -322,10 +323,10 @@ class AdaptiveStep(Layer):
                 # TODO: This won't work when we reload the model.
                 'memory_network': self.memory_network.__class__,
                 'name': self.name,
-                'init': self.init.__name__,
+                'init': self.init,
                 'ponder_cost_strength': self.ponder_cost_strength,
                 'epsilon': self.epsilon,
-                'max_computation': self.max_val
+                'max_computation': self.max_computation
         }
         base_config = super(AdaptiveStep, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))

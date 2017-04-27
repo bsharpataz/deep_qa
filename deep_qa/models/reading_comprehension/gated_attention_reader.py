@@ -1,19 +1,16 @@
-from typing import Any, Dict
+from typing import Dict
 from overrides import overrides
-from keras.layers import Input, Dropout, merge
+from keras.layers import Input, Dropout, Concatenate
 from keras.callbacks import LearningRateScheduler
 
-from ...data.instances.mc_question_answer_instance import McQuestionAnswerInstance
+from ...data.instances.reading_comprehension.mc_question_passage_instance import McQuestionPassageInstance
 from ...common.checks import ConfigurationError
-from ...layers.backend.batch_dot import BatchDot
-from ...layers.attention.attention import Attention
-from ...layers.attention.masked_softmax import MaskedSoftmax
-from ...layers.option_attention_sum import OptionAttentionSum
-from ...layers.overlap import Overlap
-from ...layers.attention.gated_attention import GatedAttention
-from ...layers.l1_normalize import L1Normalize
-from ...layers.vector_matrix_split import VectorMatrixSplit
-from ...layers.bigru_index_selector import BiGRUIndexSelector
+
+from ...layers.backend import BatchDot
+from ...layers.attention import Attention, MaskedSoftmax, GatedAttention
+from ...layers import OptionAttentionSum, Overlap, L1Normalize
+from ...layers import VectorMatrixSplit, BiGRUIndexSelector
+from ...common.params import Params
 from ...training.text_trainer import TextTrainer
 from ...training.models import DeepQaModel
 
@@ -59,7 +56,7 @@ class GatedAttentionReader(TextTrainer):
         indicates, for each word in the document, whether it appears in the query
         and has been shown to improve reading comprehension performance.
     """
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         self.max_question_length = params.pop('max_question_length', None)
         self.max_passage_length = params.pop('max_passage_length', None)
         self.max_option_length = params.pop('max_option_length', None)
@@ -157,7 +154,7 @@ class GatedAttentionReader(TextTrainer):
             # (batch size, document length, question length)
             qd_attention = BatchDot()([encoded_document, encoded_question])
             # (batch size, document length, question length)
-            normalized_qd_attention = MaskedSoftmax()([qd_attention])
+            normalized_qd_attention = MaskedSoftmax()(qd_attention)
 
             gated_attention_layer = GatedAttention(self.gating_function,
                                                    name="gated_attention_{}".format(i))
@@ -167,7 +164,7 @@ class GatedAttentionReader(TextTrainer):
                                                         normalized_qd_attention])
             gated_attention_dropout = Dropout(self.gated_attention_dropout)
             # shape: (batch size, document_length, 2*seq2seq hidden size)
-            document_embedding = gated_attention_dropout([document_embedding])
+            document_embedding = gated_attention_dropout(document_embedding)
 
         # Last Layer
         if self.use_qd_common_feature:
@@ -177,8 +174,7 @@ class GatedAttentionReader(TextTrainer):
                                            question_indices])
             # We concatenate qd_common_feature with the document embeddings.
             # shape: (batch size, document_length, (2*seq2seq hidden size) + 2)
-            document_embedding = merge([document_embedding, qd_common_feature],
-                                       mode='concat')
+            document_embedding = Concatenate()([document_embedding, qd_common_feature])
         # We encode the document embeddings with a final seq2seq encoder.
         document_encoder = self._get_seq2seq_encoder(name="document_final")
         # shape: (batch size, document_length, 2*seq2seq hidden size)
@@ -231,38 +227,42 @@ class GatedAttentionReader(TextTrainer):
         """
         Return the instance type that the model trains on.
         """
-        return McQuestionAnswerInstance
+        return McQuestionPassageInstance
 
     @overrides
-    def _get_max_lengths(self) -> Dict[str, int]:
+    def _get_padding_lengths(self) -> Dict[str, int]:
         """
         Return a dictionary with the appropriate padding lengths.
         """
-        max_lengths = super(GatedAttentionReader, self)._get_max_lengths()
-        max_lengths['num_question_words'] = self.max_question_length
-        max_lengths['num_passage_words'] = self.max_passage_length
-        max_lengths['num_option_words'] = self.max_option_length
-        max_lengths['num_options'] = self.num_options
-        return max_lengths
+        padding_lengths = super(GatedAttentionReader, self)._get_padding_lengths()
+        padding_lengths['num_question_words'] = self.max_question_length
+        padding_lengths['num_passage_words'] = self.max_passage_length
+        padding_lengths['num_option_words'] = self.max_option_length
+        padding_lengths['num_options'] = self.num_options
+        return padding_lengths
 
     @overrides
-    def _set_max_lengths(self, max_lengths: Dict[str, int]):
+    def _set_padding_lengths(self, padding_lengths: Dict[str, int]):
         """
         Set the padding lengths of the model.
         """
         # TODO(nelson): superclass complains that there is no
         # num_sentence_words key, so we set it to None here.
         # We should probably patch up / organize the API.
-        max_lengths["num_sentence_words"] = None
-        super(GatedAttentionReader, self)._set_max_lengths(max_lengths)
-        self.max_question_length = max_lengths['num_question_words']
-        self.max_passage_length = max_lengths['num_passage_words']
-        self.max_option_length = max_lengths['num_option_words']
-        self.num_options = max_lengths['num_options']
+        padding_lengths["num_sentence_words"] = None
+        super(GatedAttentionReader, self)._set_padding_lengths(padding_lengths)
+        if self.max_question_length is None:
+            self.max_question_length = padding_lengths['num_question_words']
+        if self.max_passage_length is None:
+            self.max_passage_length = padding_lengths['num_passage_words']
+        if self.max_option_length is None:
+            self.max_option_length = padding_lengths['num_option_words']
+        if self.num_options is None:
+            self.num_options = padding_lengths['num_options']
 
     @overrides
-    def _set_max_lengths_from_model(self):
-        self.set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][1:])
+    def _set_padding_lengths_from_model(self):
+        self._set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][1:])
         self.max_question_length = self.model.get_input_shape_at(0)[0][1]
         self.max_passage_length = self.model.get_input_shape_at(0)[1][1]
         self.num_options = self.model.get_input_shape_at(0)[2][1]

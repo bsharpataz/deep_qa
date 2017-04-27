@@ -20,24 +20,20 @@ for each ``Instance`` type.
 import itertools
 from typing import Any, Callable, Dict, List
 
+from ...common.params import Params
 from ..tokenizers import tokenizers
 from ..data_indexer import DataIndexer
 
 
 class Instance:
     """
-    A data instance, used either for training a neural network or for
-    testing one.
+    A data instance, used either for training a neural network or for testing one.
 
     Parameters
     ----------
-    label : boolean or index
-        For simple ``Instances`` (like ``TextInstance``), this is
-        either ``True``, ``False``, or ``None``, indicating whether the
-        instance is a positive, negative or unknown (i.e., test) example,
-        respectively. For ``MultipleChoiceInstances`` or other more
-        complicated things, is a class index.
-
+    label : Any
+        Any kind of label that you might want to predict in a model.  Could be a class label, a
+        tag sequence, a character span in a passage, etc.
     index : int, optional
         Used for matching instances with other data, such as background
         sentences.
@@ -45,11 +41,6 @@ class Instance:
     def __init__(self, label, index: int=None):
         self.label = label
         self.index = index
-
-    @staticmethod
-    def _check_label(label: bool, default_label: bool):
-        if default_label is not None and label is not None and label != default_label:
-            raise RuntimeError("Default label given with file, and label in file doesn't match!")
 
 
 class TextInstance(Instance):
@@ -64,12 +55,12 @@ class TextInstance(Instance):
     or testing, we need to first convert them into ``IndexedInstances``.
 
     In order to actually convert text into some kind of indexed sequence,
-    we rely on a ``TextEncoder``. There are several ``TextEncoder``subclasses,
+    we rely on a ``TextEncoder``. There are several ``TextEncoder`` subclasses,
     that will let you use word token sequences, character sequences, and other
     options.  By default we use word tokens.  You can override this by setting
     the ``encoder`` class variable.
     """
-    tokenizer = tokenizers['words']({})
+    tokenizer = tokenizers['words'](Params({}))
 
     def __init__(self, label, index: int=None):
         super(TextInstance, self).__init__(label, index)
@@ -126,7 +117,7 @@ class TextInstance(Instance):
         raise NotImplementedError
 
     @classmethod
-    def read_from_line(cls, line: str, default_label: bool=None):
+    def read_from_line(cls, line: str):
         """
         Reads an instance of this type from a line.
 
@@ -134,9 +125,6 @@ class TextInstance(Instance):
         ----------
         line : str
             A line from a data file.
-        default_label: bool
-            If a label is not provided, the default to use. Mainly used in
-            ``TrueFalseInstance``.
 
         Returns
         -------
@@ -181,24 +169,21 @@ class IndexedInstance(Instance):
         """
         raise NotImplementedError
 
-    def get_lengths(self) -> List[int]:
+    def get_padding_lengths(self) -> Dict[str, int]:
         """
-        Returns the length of this instance in all dimensions that
-        require padding.
+        Returns the length of this instance in all dimensions that require padding.
 
-        Different kinds of instances have different fields that are padded,
-        such as sentence length, number of background sentences, number of
-        options, etc.
+        Different kinds of instances have different fields that are padded, such as sentence
+        length, number of background sentences, number of options, etc.
 
         Returns
         -------
-        lengths: List of int
-            A list of integers, where the value at each index is the
-            maximum length in each dimension.
+        padding_lengths: Dict[str, int]
+            A dictionary mapping padding keys (like "num_sentence_words") to lengths.
         """
         raise NotImplementedError
 
-    def pad(self, max_lengths: Dict[str, int]):
+    def pad(self, padding_lengths: Dict[str, int]):
         """
         Add zero-padding to make each data example of equal length for use
         in the neural network.
@@ -207,11 +192,11 @@ class IndexedInstance(Instance):
 
         Parameters
         ----------
-        max_lengths: Dictionary of {str:int}
-            In this dictionary, each ``str`` refers to a type of token
-            (e.g. ``max_words_question``), and the corresponding ``int`` is
-            the value. This dictionary must have the same dimension as was
-            returned by ``get_lengths()``. We will use these lengths to pad the
+        padding_lengths: Dict[str, int]
+            In this dictionary, each ``str`` refers to a type of token (e.g.
+            ``num_sentence_words``), and the corresponding ``int`` is the value. This dictionary
+            must have the same keys as was returned by
+            :func:`~IndexedInstance.get_padding_lengths()`. We will use these lengths to pad the
             instance in all of the necessary dimensions to the given leangths.
         """
         raise NotImplementedError
@@ -242,16 +227,16 @@ class IndexedInstance(Instance):
         'num_word_characters' key, with a value corresponding to the longest
         word in the sequence.
         """
-        lengths = {'num_sentence_words': len(word_indices)}
+        padding_lengths = {'num_sentence_words': len(word_indices)}
         if len(word_indices) > 0 and not isinstance(word_indices[0], int):
             if isinstance(word_indices[0], list):
-                lengths['num_word_characters'] = max([len(word) for word in word_indices])
+                padding_lengths['num_word_characters'] = max([len(word) for word in word_indices])
             # There might someday be other cases we're missing here, but we'll punt for now.
-        return lengths
+        return padding_lengths
 
     @staticmethod
     def pad_word_sequence(word_sequence: List[int],
-                          lengths: Dict[str, int],
+                          padding_lengths: Dict[str, int],
                           truncate_from_right: bool=True) -> List:
         """
         Take a list of indices and pads them.
@@ -261,16 +246,16 @@ class IndexedInstance(Instance):
         word_sequence : List of int
             A list of word indices.
 
-        lengths : Dictionary of {str:int}
-            In this dictionary, each ``str`` refers to a type of token
-            (e.g. ``max_words_question``), and the corresponding ``int`` is
-            the value. This dictionary must have the same dimension as was
-            returned by ``get_lengths()``. We will use these lengths to pad the
+        padding_lengths : Dict[str, int]
+            In this dictionary, each ``str`` refers to a type of token (e.g.
+            ``num_sentence_words``), and the corresponding ``int`` is the value. This dictionary
+            must have the same dimension as was returned by
+            :func:`~IndexedInstance.get_padding_lengths()`. We will use these lengths to pad the
             instance in all of the necessary dimensions to the given leangths.
 
         truncate_from_right : bool, default=True
-            If truncating the indices is necessary, this parameter dictates
-            whether we do so on the left or right.
+            If truncating the indices is necessary, this parameter dictates whether we do so on the
+            left or right.
 
         Returns
         -------
@@ -279,20 +264,22 @@ class IndexedInstance(Instance):
 
         Notes
         -----
-        The reason we truncate from the right by default is for
-        cases that are questions, with long set ups. We at least want to get
-        the question encoded, which is always at the end, even if we've lost
-        much of the question set up. If you want to truncate from the other
-        direction, you can.
+        The reason we truncate from the right by default is for cases that are questions, with long
+        set ups. We at least want to get the question encoded, which is always at the end, even if
+        we've lost much of the question set up. If you want to truncate from the other direction,
+        you can.
+
+        TODO(matt): we should probably switch the default to truncate from the left, and clear up
+        the naming here - it's easy to get confused about what "truncate from right" means.
         """
         default_value = lambda: 0
-        if 'num_word_characters' in lengths:
+        if 'num_word_characters' in padding_lengths:
             default_value = lambda: []
 
         padded_word_sequence = IndexedInstance.pad_sequence_to_length(
-                word_sequence, lengths['num_sentence_words'], default_value, truncate_from_right)
-        if 'num_word_characters' in lengths:
-            desired_length = lengths['num_word_characters']
+                word_sequence, padding_lengths['num_sentence_words'], default_value, truncate_from_right)
+        if 'num_word_characters' in padding_lengths:
+            desired_length = padding_lengths['num_word_characters']
             longest_word = max(padded_word_sequence, key=len)
             if desired_length > len(longest_word):
                 # since we want to pad to greater than the longest word, we add a

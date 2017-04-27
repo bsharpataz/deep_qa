@@ -4,7 +4,7 @@ import numpy
 from keras.layers import Input
 from keras.models import Model
 
-from deep_qa.layers.backend.repeat import Repeat
+from deep_qa.layers.backend import Repeat
 
 class TestRepeatLayer:
     def test_call_works_on_simple_input(self):
@@ -12,8 +12,8 @@ class TestRepeatLayer:
         input_length = 3
         repetitions = 4
         input_layer = Input(shape=(input_length,), dtype='float32')
-        repeat_output = Repeat(axis=1, repetitions=repetitions)([input_layer])
-        model = Model(input=[input_layer], output=[repeat_output])
+        repeat_output = Repeat(axis=1, repetitions=repetitions)(input_layer)
+        model = Model(inputs=[input_layer], outputs=[repeat_output])
         input_tensor = numpy.asarray([[2, 5, 3], [-1, -4, -2]])
         repeat_tensor = model.predict([input_tensor])
         assert repeat_tensor.shape == (batch_size, repetitions, input_length)

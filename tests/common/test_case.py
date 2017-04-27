@@ -12,6 +12,7 @@ import numpy
 from numpy.testing import assert_allclose
 
 from deep_qa.common.checks import log_keras_version_info
+from deep_qa.common.params import Params
 from deep_qa.models.memory_networks.memory_network import MemoryNetwork
 from deep_qa.models.multiple_choice_qa.multiple_true_false_similarity import MultipleTrueFalseSimilarity
 
@@ -20,6 +21,7 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
     TEST_DIR = './TMP_TEST/'
     TRAIN_FILE = TEST_DIR + 'train_file'
     VALIDATION_FILE = TEST_DIR + 'validation_file'
+    TEST_FILE = TEST_DIR + 'test_file'
     TRAIN_BACKGROUND = TEST_DIR + 'train_background'
     VALIDATION_BACKGROUND = TEST_DIR + 'validation_background'
     SNLI_FILE = TEST_DIR + 'snli_file'
@@ -33,12 +35,11 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
         os.makedirs(self.TEST_DIR, exist_ok=True)
 
     def tearDown(self):
-        if K.backend() == 'tensorflow':
-            K.clear_session()
         shutil.rmtree(self.TEST_DIR)
+        K.clear_session()
 
     def get_model_params(self, model_class, additional_arguments=None):
-        params = {}
+        params = Params({})
         params['save_models'] = False
         params['model_serialization_prefix'] = self.TEST_DIR
         params['train_files'] = [self.TRAIN_FILE]
@@ -46,10 +47,12 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
         params['embedding_dim'] = {'words': 6, 'characters': 2}
         params['encoder'] = {"default": {'type': 'bow'}}
         params['num_epochs'] = 1
-        params['keras_validation_split'] = 0.0
+        params['validation_split'] = 0.0
         if self.is_model_with_background(model_class):
+            # pylint: disable=no-member
             params['train_files'].append(self.TRAIN_BACKGROUND)
             params['validation_files'].append(self.VALIDATION_BACKGROUND)
+            # pylint: enable=no-member
         if self.is_memory_network(model_class):
             params['knowledge_selector'] = {'type': 'dot_product'}
             params['memory_updater'] = {'type': 'sum'}
@@ -63,8 +66,13 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
         params = self.get_model_params(model_class, additional_arguments)
         return model_class(params)
 
-    def ensure_model_trains_and_loads(self, model_class, args):
+    def ensure_model_trains_and_loads(self, model_class, args: Params):
         args['save_models'] = True
+        # Our loading tests work better if you're not using data generators.  Unless you
+        # specifically request it in your test, we'll avoid using them here, and if you _do_ use
+        # them, we'll skip some of the stuff below that isn't compatible.
+        args.setdefault('use_data_generator', False)
+        args.setdefault('use_dynamic_padding', False)
         model = self.get_model(model_class, args)
         model.train()
 
@@ -73,16 +81,23 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
         loaded_model.load_model()
 
         # verify that original model and the loaded model predict the same outputs
-        assert_allclose(model.model.predict(model.__dict__["validation_input"]),
-                        loaded_model.model.predict(model.__dict__["validation_input"]))
+        if isinstance(model.validation_arrays, tuple):
+            assert_allclose(model.model.predict(model.validation_arrays[0]),
+                            loaded_model.model.predict(model.validation_arrays[0]))
+        else:
+            # We shuffle the data in the data generator.  Instead of making that logic more
+            # complicated, we'll just pass on the loading tests here.  See comment above.
+            pass
 
-        # We should get the same result if we index the data from the
-        # original model and the loaded model.
-        indexed_validation_input, _ = loaded_model._prepare_data(
-                model.__dict__["validation_dataset"],
-                for_train=False)
-        assert_allclose(model.model.predict(model.__dict__["validation_input"]),
-                        loaded_model.model.predict(indexed_validation_input))
+        # We should get the same result if we index the data from the original model and the loaded
+        # model.
+        _, indexed_validation_arrays = loaded_model.load_data_arrays(model.validation_files)
+        if isinstance(indexed_validation_arrays, tuple):
+            assert_allclose(model.model.predict(model.validation_arrays[0]),
+                            loaded_model.model.predict(indexed_validation_arrays[0]))
+        else:
+            # As above, we'll just pass on this.
+            pass
         return model, loaded_model
 
     @staticmethod
@@ -91,7 +106,20 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
         vector[index] = 1
         return vector
 
-    def write_snli_file(self):
+    def write_snli_files(self):
+        with codecs.open(self.TRAIN_FILE, 'w', 'utf-8') as train_file:
+            train_file.write('1\ttext 1\thypothesis1\tentails\n')
+            train_file.write('2\ttext 2\thypothesis2\tcontradicts\n')
+            train_file.write('3\ttext3\thypothesis3\tentails\n')
+            train_file.write('4\ttext 4\thypothesis4\tneutral\n')
+            train_file.write('5\ttext5\thypothesis 5\tentails\n')
+            train_file.write('6\ttext6\thypothesis6\tcontradicts\n')
+        with codecs.open(self.VALIDATION_FILE, 'w', 'utf-8') as validation_file:
+            validation_file.write('1\ttext 1 with extra words\thypothesis1\tentails\n')
+            validation_file.write('2\ttext 2\tlonger hypothesis 2\tcontradicts\n')
+            validation_file.write('3\ttext3\thypothesis withreallylongfakeword\tentails\n')
+
+    def write_snli_pretraining_file(self):
         with codecs.open(self.SNLI_FILE, 'w', 'utf-8') as snli_file:
             snli_file.write('1\ttext1\thypothesis1\tentails\n')
             snli_file.write('2\ttext2\thypothesis2\tcontradicts\n')
@@ -102,15 +130,15 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
 
     def write_sequence_tagging_files(self):
         with codecs.open(self.TRAIN_FILE, 'w', 'utf-8') as train_file:
-            train_file.write('cats###N\tare###V\tanimals###N\t.###.\n')
-            train_file.write('dogs###N\tare###V\tanimals###N\t.###.\n')
-            train_file.write('snakes###N\tare###V\tanimals###N\t.###.\n')
-            train_file.write('birds###N\tare###V\tanimals###N\t.###.\n')
+            train_file.write('cats###N\tare###V\tanimals###N\t.###N\n')
+            train_file.write('dogs###N\tare###V\tanimals###N\t.###N\n')
+            train_file.write('snakes###N\tare###V\tanimals###N\t.###N\n')
+            train_file.write('birds###N\tare###V\tanimals###N\t.###N\n')
         with codecs.open(self.VALIDATION_FILE, 'w', 'utf-8') as validation_file:
-            validation_file.write('horses###N\tare###V\tanimals###N\t.###.\n')
-            validation_file.write('cows###N\tare###V\tanimals###N\t.###.\n')
-            validation_file.write('monkeys###N\tare###V\tanimals###N\t.###.\n')
-            validation_file.write('caterpillars###N\tare###V\tanimals###N\t.###.\n')
+            validation_file.write('horses###N\tare###V\tanimals###N\t.###N\n')
+            validation_file.write('blue###N\tcows###N\tare###V\tanimals###N\t.###N\n')
+            validation_file.write('monkeys###N\tare###V\tanimals###N\t.###N\n')
+            validation_file.write('caterpillars###N\tare###V\tanimals###N\t.###N\n')
 
     def write_true_false_model_files(self):
         with codecs.open(self.VALIDATION_FILE, 'w', 'utf-8') as validation_file:
@@ -133,6 +161,13 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
             train_file.write('4\tsentence4\t1\n')
             train_file.write('5\tsentence5\t0\n')
             train_file.write('6\tsentence6\t0\n')
+        with codecs.open(self.TEST_FILE, 'w', 'utf-8') as test_file:
+            test_file.write('1\ttestsentence1\t0\n')
+            test_file.write('2\ttestsentence2 word2 word3\t1\n')
+            test_file.write('3\ttestsentence3 word2\t0\n')
+            test_file.write('4\ttestsentence4\t1\n')
+            test_file.write('5\ttestsentence5 word4\t0\n')
+            test_file.write('6\ttestsentence6\t0\n')
 
     def write_additional_true_false_model_files(self):
         with codecs.open(self.VALIDATION_FILE, 'w', 'utf-8') as validation_file:
@@ -280,15 +315,6 @@ class DeepQaTestCase(TestCase):  # pylint: disable=too-many-public-methods
             train_file.write('2\tquestion 2\tpassage2 with answer2\t0,8\n')
             train_file.write('3\tquestion 3\tpassage3 with answer3\t9,13\n')
             train_file.write('4\tquestion 4\tpassage4 with answer4\t14,20\n')
-
-    def write_additional_span_prediction_files(self):
-        with codecs.open(self.VALIDATION_FILE, 'w', 'utf-8') as validation_file:
-            validation_file.write('1\tquestion 2\tpassage with perhaps the answer\t13,18\n')
-        with codecs.open(self.TRAIN_FILE, 'w', 'utf-8') as train_file:
-            train_file.write('1\tquestion 5\tpassage5 with answer5 answer3\t14,20\n')
-            train_file.write('2\tquestion 6\tpassage6 with answer6\t0,8\n')
-            train_file.write('3\tquestion 7\tpassage7 with answer7\t9,13\n')
-            train_file.write('4\tquestion 8\tpassage8 with answer8\t14,20\n')
 
     def write_sentence_selection_files(self):
         with codecs.open(self.VALIDATION_FILE, 'w', 'utf-8') as validation_file:

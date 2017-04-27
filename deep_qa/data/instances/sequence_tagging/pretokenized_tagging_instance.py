@@ -20,14 +20,12 @@ class PreTokenizedTaggingInstance(TaggingInstance):
 
     @classmethod
     @overrides
-    def read_from_line(cls, line: str, default_label: bool=None):
+    def read_from_line(cls, line: str):
         """
         Reads a ``PreTokenizedTaggingInstance`` from a line.  The format has one of two options:
 
         1. [example index][token1]###[tag1][tab][token2]###[tag2][tab]...
         2. [token1]###[tag1][tab][token2]###[tag2][tab]...
-
-        default_label is ignored, but we keep the argument to match the interface.
         """
         fields = line.split("\t")
 
@@ -39,7 +37,7 @@ class PreTokenizedTaggingInstance(TaggingInstance):
         tokens = []
         tags = []
         for field in fields:
-            token, tag = field.split("###")
+            token, tag = field.rsplit("###", 1)
             tokens.append(token)
             tags.append(tag)
         return cls(tokens, tags, index)

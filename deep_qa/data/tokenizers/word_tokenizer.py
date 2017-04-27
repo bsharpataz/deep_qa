@@ -1,10 +1,12 @@
-from typing import Any, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 from overrides import overrides
+from keras.layers import Layer
 
 from .tokenizer import Tokenizer
 from .word_processor import WordProcessor
 from ..data_indexer import DataIndexer
+from ...common.params import Params
 
 
 class WordTokenizer(Tokenizer):
@@ -25,7 +27,7 @@ class WordTokenizer(Tokenizer):
         splitting, stemming, and filtering words.  See ``WordProcessor`` for a complete description
         of available parameters.
     """
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         self.word_processor = WordProcessor(params.pop('processor', {}))
         super(WordTokenizer, self).__init__(params)
 
@@ -43,18 +45,19 @@ class WordTokenizer(Tokenizer):
 
     @overrides
     def embed_input(self,
-                    input_layer: 'keras.layers.Layer',
-                    text_trainer: 'TextTrainer',
+                    input_layer: Layer,
+                    embed_function: Callable[[Layer, str, str], Layer],
+                    text_trainer,
                     embedding_name: str="embedding"):
         # pylint: disable=protected-access
-        return text_trainer._get_embedded_input(input_layer,
-                                                embedding_name='word_' + embedding_name,
-                                                vocab_name='words')
+        return embed_function(input_layer,
+                              embedding_name='word_' + embedding_name,
+                              vocab_name='words')
 
     @overrides
     def get_sentence_shape(self, sentence_length: int, word_length: int) -> Tuple[int]:
         return (sentence_length,)
 
     @overrides
-    def get_max_lengths(self, sentence_length: int, word_length: int) -> Dict[str, int]:
+    def get_padding_lengths(self, sentence_length: int, word_length: int) -> Dict[str, int]:
         return {'num_sentence_words': sentence_length}

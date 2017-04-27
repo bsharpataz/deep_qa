@@ -12,8 +12,6 @@ attended_background_knowledge and current_memory are two different vectors that 
 reasoning over this background knowledge, which the entailment model can choose to use as desired.
 """
 
-from typing import Any, Dict
-
 from keras import backend as K
 from keras.layers import Dense, Layer, TimeDistributed
 
@@ -27,10 +25,13 @@ class TrueFalseEntailmentModel:
     a single vector, then pass that vector through an MLP.  How we actually merge the three inputs
     is specified by one of the combiners below.
     """
-    def __init__(self, params: Dict[str, Any]):
-        self.num_hidden_layers = params.pop('num_hidden_layers', 1)
-        self.hidden_layer_width = params.pop('hidden_layer_width', 50)
-        self.hidden_layer_activation = params.pop('hidden_layer_activation', 'relu')
+    def __init__(self,
+                 num_hidden_layers: int=1,
+                 hidden_layer_width: int=50,
+                 hidden_layer_activation: str="relu"):
+        self.num_hidden_layers = num_hidden_layers
+        self.hidden_layer_width = hidden_layer_width
+        self.hidden_layer_activation = hidden_layer_activation
 
         self.hidden_layers = None
         self.softmax_layer = None
@@ -43,10 +44,10 @@ class TrueFalseEntailmentModel:
     def _init_layers(self):
         self.hidden_layers = []
         for i in range(self.num_hidden_layers):
-            self.hidden_layers.append(Dense(output_dim=self.hidden_layer_width,
+            self.hidden_layers.append(Dense(units=self.hidden_layer_width,
                                             activation=self.hidden_layer_activation,
                                             name='entailment_hidden_layer_%d' % i))
-        self.score_layer = Dense(output_dim=2, activation='softmax', name='entailment_softmax')
+        self.score_layer = Dense(units=2, activation='softmax', name='entailment_softmax')
 
     def classify(self, combined_input):
         """
@@ -69,11 +70,15 @@ class QuestionAnswerEntailmentModel:
     into the same dimension as the answer encoding, does a dot product between the combined input
     encoding and the answer encoding, and does a final softmax over those similar scores.
     """
-    def __init__(self, params: Dict[str, Any]):
-        self.num_hidden_layers = params.pop('num_hidden_layers', 1)
-        self.hidden_layer_width = params.pop('hidden_layer_width', 50)
-        self.hidden_layer_activation = params.pop('hidden_layer_activation', 'relu')
-        self.answer_dim = params.pop('answer_dim')
+    def __init__(self,
+                 answer_dim: int,
+                 num_hidden_layers: int=1,
+                 hidden_layer_width: int=50,
+                 hidden_layer_activation: str="relu"):
+        self.num_hidden_layers = num_hidden_layers
+        self.hidden_layer_width = hidden_layer_width
+        self.hidden_layer_activation = hidden_layer_activation
+        self.answer_dim = answer_dim
 
         self.hidden_layers = None
         self.softmax_layer = None
@@ -85,10 +90,10 @@ class QuestionAnswerEntailmentModel:
     def _init_layers(self):
         self.hidden_layers = []
         for i in range(self.num_hidden_layers):
-            self.hidden_layers.append(Dense(output_dim=self.hidden_layer_width,
+            self.hidden_layers.append(Dense(units=self.hidden_layer_width,
                                             activation=self.hidden_layer_activation,
                                             name='entailment_hidden_layer_%d' % i))
-        self.projection_layer = Dense(output_dim=self.answer_dim,
+        self.projection_layer = Dense(units=self.answer_dim,
                                       activation='linear',
                                       name='entailment_projection')
 
@@ -119,10 +124,13 @@ class MultipleChoiceEntailmentModel:
     a single vector, then pass that vector through an MLP, once for each of the multiple choices,
     then have a final softmax over answer options.
     """
-    def __init__(self, params: Dict[str, Any]):
-        self.num_hidden_layers = params.pop('num_hidden_layers', 1)
-        self.hidden_layer_width = params.pop('hidden_layer_width', 50)
-        self.hidden_layer_activation = params.pop('hidden_layer_activation', 'relu')
+    def __init__(self,
+                 num_hidden_layers: int=1,
+                 hidden_layer_width: int=50,
+                 hidden_layer_activation: str="relu"):
+        self.num_hidden_layers = num_hidden_layers
+        self.hidden_layer_width = hidden_layer_width
+        self.hidden_layer_activation = hidden_layer_activation
 
         self.hidden_layers = None
         self.score_layer = None
@@ -131,10 +139,10 @@ class MultipleChoiceEntailmentModel:
     def _init_layers(self):
         self.hidden_layers = []
         for i in range(self.num_hidden_layers):
-            self.hidden_layers.append(Dense(output_dim=self.hidden_layer_width,
+            self.hidden_layers.append(Dense(units=self.hidden_layer_width,
                                             activation=self.hidden_layer_activation,
                                             name='entailment_hidden_layer_%d' % i))
-        self.score_layer = Dense(output_dim=1, activation='sigmoid')
+        self.score_layer = Dense(units=1, activation='sigmoid')
 
     def classify(self, combined_input):
         """
@@ -157,10 +165,10 @@ class MultipleChoiceEntailmentModel:
         return softmax_output
 
 
-def split_combiner_inputs(x, encoding_dim: int):  # pylint: disable=invalid-name
-    sentence_encoding = x[:, :encoding_dim]
-    current_memory = x[:, encoding_dim:2*encoding_dim]
-    attended_knowledge = x[:, 2*encoding_dim:]
+def split_combiner_inputs(inputs, encoding_dim: int):  # pylint: disable=invalid-name
+    sentence_encoding = inputs[:, :encoding_dim]
+    current_memory = inputs[:, encoding_dim:2*encoding_dim]
+    attended_knowledge = inputs[:, 2*encoding_dim:]
     return sentence_encoding, current_memory, attended_knowledge
 
 
@@ -172,11 +180,11 @@ class MemoryOnlyCombiner(Layer):
         super(MemoryOnlyCombiner, self).__init__(name=name, **kwargs)
         self.encoding_dim = encoding_dim
 
-    def call(self, x, mask=None):
-        _, current_memory, _ = split_combiner_inputs(x, self.encoding_dim)
+    def call(self, inputs):
+        _, current_memory, _ = split_combiner_inputs(inputs, self.encoding_dim)
         return current_memory
 
-    def get_output_shape_for(self, input_shape):
+    def compute_output_shape(self, input_shape):
         return (input_shape[0], self.encoding_dim)
 
     def get_config(self):
@@ -195,8 +203,8 @@ class HeuristicMatchingCombiner(Layer):
         super(HeuristicMatchingCombiner, self).__init__(name=name, **kwargs)
         self.encoding_dim = encoding_dim
 
-    def call(self, x, mask=None):
-        sentence_encoding, current_memory, _ = split_combiner_inputs(x, self.encoding_dim)
+    def call(self, inputs):
+        sentence_encoding, current_memory, _ = split_combiner_inputs(inputs, self.encoding_dim)
         sentence_memory_product = sentence_encoding * current_memory
         sentence_memory_diff = sentence_encoding - current_memory
         return K.concatenate([sentence_encoding,
@@ -204,7 +212,7 @@ class HeuristicMatchingCombiner(Layer):
                               sentence_memory_product,
                               sentence_memory_diff])
 
-    def get_output_shape_for(self, input_shape):
+    def compute_output_shape(self, input_shape):
         # There are four components we've concatenated above: (1) the sentence encoding, (2) the
         # current memory, (3) the elementwise product of these two, and (4) their difference.  Each
         # of these has dimension `self.encoding_dim`.

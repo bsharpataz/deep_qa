@@ -6,7 +6,7 @@ from keras.models import Model
 
 from deep_qa.layers.backend.add_mask import AddMask
 from deep_qa.layers.backend.multiply import Multiply
-from deep_qa.layers.wrappers.output_mask import OutputMask
+from deep_qa.layers.wrappers import OutputMask
 
 class TestMultiply:
     def test_call_works_on_simple_input(self):
@@ -19,7 +19,7 @@ class TestMultiply:
         masked_input_2 = masking_layer(input_2_layer)
         multiply_output = Multiply()([masked_input_1, masked_input_2])
         multiply_mask = OutputMask()(multiply_output)
-        model = Model(input=[input_1_layer, input_2_layer], output=[multiply_output, multiply_mask])
+        model = Model(inputs=[input_1_layer, input_2_layer], outputs=[multiply_output, multiply_mask])
         input_1_tensor = numpy.asarray([[2, 5, 0, 1, -4],
                                         [-1, 0, -2, -10, -4]])
         input_2_tensor = numpy.asarray([[3, 2, 1, 0, -2],
@@ -42,7 +42,7 @@ class TestMultiply:
         masked_input_2 = masking_layer(input_2_layer)
         multiply_output = Multiply()([masked_input_1, masked_input_2])
         multiply_mask = OutputMask()(multiply_output)
-        model = Model(input=[input_1_layer, input_2_layer], output=[multiply_output, multiply_mask])
+        model = Model(inputs=[input_1_layer, input_2_layer], outputs=[multiply_output, multiply_mask])
         input_1_tensor = numpy.asarray([[[2, 5, 0, 1, -4],
                                          [-1, 0, -2, -10, -4]]])
         input_2_tensor = numpy.asarray([[2, 1]])

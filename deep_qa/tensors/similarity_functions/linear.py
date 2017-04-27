@@ -33,22 +33,15 @@ class Linear(SimilarityFunction):
     @overrides
     def initialize_weights(self, tensor_1_dim: int, tensor_2_dim: int) -> List['K.variable']:
         combined_dim = self._get_combined_dim(tensor_1_dim, tensor_2_dim)
-        self.weight_vector = self.init((combined_dim, 1),
-                                       name='{}_dense'.format(self.name))
-        self.bias = self.init((1,), name='{}_bias'.format(self.name))
+        self.weight_vector = K.variable(self.init((combined_dim, 1)), name=self.name + "_weights")
+        self.bias = K.variable(self.init((1,)), name=self.name + "_bias")
         return [self.weight_vector, self.bias]
 
     @overrides
     def compute_similarity(self, tensor_1, tensor_2):
         combined_tensors = self._combine_tensors(tensor_1, tensor_2)
         dot_product = K.squeeze(K.dot(combined_tensors, self.weight_vector), axis=-1)
-        if K.backend() == 'theano':
-            # For some reason theano is having a hard time broadcasting the elementwise addition,
-            # so we need to do this repeat.
-            bias = K.repeat_elements(self.bias, K.int_shape(tensor_2)[-2], 0)
-        else:
-            bias = self.bias
-        return self.activation(dot_product + bias)
+        return self.activation(dot_product + self.bias)
 
     def _combine_tensors(self, tensor_1, tensor_2):
         combined_tensor = self._get_combination(self.combinations[0], tensor_1, tensor_2)

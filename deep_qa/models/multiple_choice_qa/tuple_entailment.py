@@ -1,14 +1,15 @@
-from typing import Dict, Any, List
+from typing import Dict, List
 
 from overrides import overrides
 
 from keras.layers import Input
 
-from ...data.dataset import TextDataset
-from ...data.instances.question_answer_instance import QuestionAnswerInstance
-from ...data.instances.tuple_instance import TupleInstance
+from ...common.params import Params
+from ...data.instances.multiple_choice_qa import QuestionAnswerInstance
+from ...data.instances.text_classification import TupleInstance
+from ...data.instances.wrappers import read_background_from_file
 from ...layers.entailment_models import MultipleChoiceTupleEntailment
-from ...layers.wrappers.encoder_wrapper import EncoderWrapper
+from ...layers.wrappers import EncoderWrapper
 
 from ...training.text_trainer import TextTrainer
 from ...training.models import DeepQaModel
@@ -20,7 +21,7 @@ class MultipleChoiceTupleEntailmentModel(TextTrainer):
     uses a tuple alignment entailment model to obtain a probability distribution over the answer options
     based on how well they align with the background tuples, given the question text.
     '''
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         self.entailment_model_params = params.pop('entailment_model', {})
         self.max_answer_length = params.pop('max_answer_length', None)
         self.max_knowledge_length = params.pop('max_knowledge_length', None)
@@ -40,9 +41,9 @@ class MultipleChoiceTupleEntailmentModel(TextTrainer):
         return TupleInstance
 
     @overrides
-    def _load_dataset_from_files(self, files: List[str]):
-        dataset = super(MultipleChoiceTupleEntailmentModel, self)._load_dataset_from_files(files)
-        return TextDataset.read_background_from_file(dataset, files[1], self._background_instance_type())
+    def load_dataset_from_files(self, files: List[str]):
+        dataset = super(MultipleChoiceTupleEntailmentModel, self).load_dataset_from_files(files)
+        return read_background_from_file(dataset, files[1], self._background_instance_type())
 
     @classmethod
     @overrides
@@ -52,7 +53,7 @@ class MultipleChoiceTupleEntailmentModel(TextTrainer):
         return custom_objects
 
     @overrides
-    def _get_max_lengths(self) -> Dict[str, int]:
+    def _get_padding_lengths(self) -> Dict[str, int]:
         return {
                 'num_sentence_words': self.num_sentence_words,
                 'answer_length': self.max_answer_length,
@@ -62,15 +63,20 @@ class MultipleChoiceTupleEntailmentModel(TextTrainer):
                 }
 
     @overrides
-    def _set_max_lengths(self, max_lengths: Dict[str, int]):
-        self.num_sentence_words = max_lengths['num_sentence_words']
-        self.max_answer_length = max_lengths['answer_length']
-        self.max_knowledge_length = max_lengths['background_sentences']
-        self.num_options = max_lengths['num_options']
-        self.num_slots = max_lengths['num_slots']
+    def _set_padding_lengths(self, padding_lengths: Dict[str, int]):
+        if self.num_sentence_words is None:
+            self.num_sentence_words = padding_lengths['num_sentence_words']
+        if self.max_answer_length is None:
+            self.max_answer_length = padding_lengths['answer_length']
+        if self.max_knowledge_length is None:
+            self.max_knowledge_length = padding_lengths['background_sentences']
+        if self.num_options is None:
+            self.num_options = padding_lengths['num_options']
+        if self.num_slots is None:
+            self.num_slots = padding_lengths['num_slots']
 
     @overrides
-    def _set_max_lengths_from_model(self):
+    def _set_padding_lengths_from_model(self):
         # TODO(matt): actually implement this (it's required for loading a saved model)
         pass
 
@@ -93,7 +99,7 @@ class MultipleChoiceTupleEntailmentModel(TextTrainer):
         encoded_answers = answer_encoder(answer_embedding)
         encoded_knowledge = knowledge_encoder(knowledge_embedding)
 
-        entailment_layer = MultipleChoiceTupleEntailment(self.entailment_model_params)
+        entailment_layer = MultipleChoiceTupleEntailment(**self.entailment_model_params)
         entailment_output = entailment_layer([encoded_knowledge, question_embedding, encoded_answers])
 
         return DeepQaModel(input=[question_input, knowledge_input, answer_input], output=entailment_output)

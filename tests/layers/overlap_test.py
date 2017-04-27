@@ -5,7 +5,7 @@ import keras.backend as K
 from keras.layers import Input
 from keras.models import Model
 
-from deep_qa.layers.overlap import Overlap
+from deep_qa.layers import Overlap
 
 
 class TestOverlap:
@@ -47,5 +47,5 @@ class TestOverlap:
                                         [0.0, 1.0], [1.0, 0.0], [1.0, 0.0]]])
 
         # Testing the masked general batched case
-        result = K.eval(Overlap()([tensor_a, tensor_b], [mask_a, mask_b]))
+        result = K.eval(Overlap()([tensor_a, tensor_b], mask=[mask_a, mask_b]))
         assert_almost_equal(result, expected_output)

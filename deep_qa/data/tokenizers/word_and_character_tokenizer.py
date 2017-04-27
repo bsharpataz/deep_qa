@@ -1,14 +1,18 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from overrides import overrides
 from keras import backend as K
-from keras.layers import merge
+from keras.layers import Concatenate, Layer
 
 from .tokenizer import Tokenizer
 from .word_processor import WordProcessor
 from ..data_indexer import DataIndexer
-from ...layers.vector_matrix_split import VectorMatrixSplit
-from ...layers.wrappers.time_distributed import TimeDistributed
+from ...layers.backend import CollapseToBatch
+from ...layers.backend import ExpandFromBatch
+from ...layers.wrappers import EncoderWrapper
+from ...layers import VectorMatrixSplit
+from ...common.params import Params
+
 
 class WordAndCharacterTokenizer(Tokenizer):
     """
@@ -26,7 +30,7 @@ class WordAndCharacterTokenizer(Tokenizer):
     documentation there for some more info).  If you do not give a ``"word"`` key in the
     ``encoder`` dict, we'll create a new encoder using the ``"default"`` parameters.
     """
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         self.word_processor = WordProcessor(params.pop('processor', {}))
         super(WordAndCharacterTokenizer, self).__init__(params)
 
@@ -54,8 +58,9 @@ class WordAndCharacterTokenizer(Tokenizer):
 
     @overrides
     def embed_input(self,
-                    input_layer: 'keras.layers.Layer',
-                    text_trainer: 'TextTrainer',
+                    input_layer: Layer,
+                    embed_function: Callable[[Layer, str, str], Layer],
+                    text_trainer,
                     embedding_name: str="embedding"):
         """
         A combined word-and-characters representation requires some fancy footwork to do the
@@ -75,46 +80,50 @@ class WordAndCharacterTokenizer(Tokenizer):
         # This is happening before any masking is done, so we don't need to worry about the
         # mask_split_axis argument to VectorMatrixSplit.
         words, characters = VectorMatrixSplit(split_axis=-1)(input_layer)
-        word_embedding = text_trainer._get_embedded_input(words,
-                                                          embedding_name='word_' + embedding_name,
-                                                          vocab_name='words')
-        character_embedding = text_trainer._get_embedded_input(characters,
-                                                               embedding_name='character_' + embedding_name,
-                                                               vocab_name='characters')
+        word_embedding = embed_function(words,
+                                        embedding_name='word_' + embedding_name,
+                                        vocab_name='words')
+        character_embedding = embed_function(characters,
+                                             embedding_name='character_' + embedding_name,
+                                             vocab_name='characters')
 
         # A note about masking here: we care about the character masks when encoding a character
         # sequence, so we need the mask to be passed to the character encoder correctly.  However,
         # we _don't_ care here about whether the whole word will be masked, as the word_embedding
-        # will carry that information, so the output mask returned by the TimeDistributed layer
-        # here will be ignored.
-        word_encoder = TimeDistributed(
-                text_trainer._get_encoder(name="word", fallback_behavior="use default params"))
-        # We might need to TimeDistribute this again, if our input has ndim higher than 3.
-        for _ in range(3, K.ndim(characters)):
-            word_encoder = TimeDistributed(word_encoder, name="timedist_" + word_encoder.name)
-        word_encoding = word_encoder(character_embedding)
+        # will carry that information.  Because of the way `Concatenate` handles masks, if you've
+        # done something crazy where you have a word index but your character indices are all zero,
+        # you will get a 0 in the mask for that word at the end of this.  But assuming you're using
+        # this correctly, you should only get a 0 in the character-level mask in the same places
+        # that you have 0s in the word-level mask, so `Concatenate` further below will do the right
+        # thing.
 
-        merge_mode = lambda inputs: K.concatenate(inputs, axis=-1)
-        def merge_shape(input_shapes):
-            output_shape = list(input_shapes[0])
-            output_shape[-1] += input_shapes[1][-1]
-            return tuple(output_shape)
-        merge_mask = lambda masks: masks[0]
-
-        # If you're embedding multiple inputs in your model, we need the final merge layer here to
-        # have a unique name each time.  In order to get a unique name, we use the name of the
-        # input layer.  Except sometimes Keras adds funny things to the end of the input layer, so
+        # character_embedding has shape `(batch_size, ..., num_words, word_length,
+        # embedding_dim)`, but our encoder expects a tensor with shape `(batch_size,
+        # word_length, embedding_dim)` to the word encoder.  Typically, we would use Keras'
+        # TimeDistributed layer to handle this.  However, if we're using dynamic padding, we
+        # may not know `num_words` (which we're collapsing) or even `word_length` at runtime,
+        # which messes with TimeDistributed.  In order to handle this correctly, we'll use
+        # CollapseToBatch and ExpandFromBatch instead of TimeDistributed.  Those layers
+        # together do basically the same thing, collapsing all of the unwanted dimensions into
+        # the batch_size temporarily, but they can handle unknown runtime shapes.
+        dims_to_collapse = K.ndim(character_embedding) - 3
+        collapsed_character_embedding = CollapseToBatch(dims_to_collapse)(character_embedding)
+        word_encoder = text_trainer._get_encoder(name="word", fallback_behavior="use default params")
+        collapsed_word_encoding = word_encoder(collapsed_character_embedding)
+        word_encoding = ExpandFromBatch(dims_to_collapse)([collapsed_word_encoding, character_embedding])
+        # If you're embedding multiple inputs in your model, we need the final concatenation here
+        # to have a unique name each time.  In order to get a unique name, we use the name of the
+        # input layer.  Except sometimes Keras adds funny things to the ends of the input layer, so
         # we'll strip those off.
         input_name = input_layer.name
+        if '/' in input_name:
+            input_name = input_name.rsplit('/', 1)[1]
         if ':' in input_name:
             input_name = input_name.split(':')[0]
         if input_name.split('_')[-1].isdigit():
             input_name = '_'.join(input_name.split('_')[:-1])
-        final_embedded_input = merge([word_embedding, word_encoding],
-                                     mode=merge_mode,
-                                     output_shape=merge_shape,
-                                     output_mask=merge_mask,
-                                     name='combined_word_embedding_for_' + input_name)
+        name = 'combined_word_embedding_for_' + input_name
+        final_embedded_input = Concatenate(name=name)([word_embedding, word_encoding])
         return final_embedded_input
 
     @overrides
@@ -122,5 +131,14 @@ class WordAndCharacterTokenizer(Tokenizer):
         return (sentence_length, word_length)
 
     @overrides
-    def get_max_lengths(self, sentence_length: int, word_length: int) -> Dict[str, int]:
+    def get_padding_lengths(self, sentence_length: int, word_length: int) -> Dict[str, int]:
         return {'num_sentence_words': sentence_length, 'num_word_characters': word_length}
+
+    @overrides
+    def get_custom_objects(self) -> Dict[str, Any]:
+        return {
+                'CollapseToBatch': CollapseToBatch,
+                'EncoderWrapper': EncoderWrapper,
+                'ExpandFromBatch': ExpandFromBatch,
+                'VectorMatrixSplit': VectorMatrixSplit,
+                }

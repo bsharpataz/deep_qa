@@ -1,12 +1,13 @@
-from typing import Any, Dict
+from typing import Dict
 from overrides import overrides
 from keras.layers import Input
 
-from ...data.instances.mc_question_answer_instance import McQuestionAnswerInstance
-from ...layers.attention.attention import Attention
-from ...layers.option_attention_sum import OptionAttentionSum
-from ...layers.l1_normalize import L1Normalize
-from ...training.text_trainer import TextTrainer
+from ...data.instances.reading_comprehension import McQuestionPassageInstance
+from ...layers import L1Normalize
+from ...layers import OptionAttentionSum
+from ...layers.attention import Attention
+from ...training import TextTrainer
+from ...common.params import Params
 from ...training.models import DeepQaModel
 
 
@@ -20,7 +21,7 @@ class AttentionSumReader(TextTrainer):
     document, and it then selects the option with the highest summed or mean
     weight as the answer.
     """
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: Params):
         self.max_question_length = params.pop('max_question_length', None)
         self.max_passage_length = params.pop('max_passage_length', None)
         self.max_option_length = params.pop('max_option_length', None)
@@ -110,38 +111,42 @@ class AttentionSumReader(TextTrainer):
         """
         Return the instance type that the model trains on.
         """
-        return McQuestionAnswerInstance
+        return McQuestionPassageInstance
 
     @overrides
-    def _get_max_lengths(self) -> Dict[str, int]:
+    def _get_padding_lengths(self) -> Dict[str, int]:
         """
         Return a dictionary with the appropriate padding lengths.
         """
-        max_lengths = super(AttentionSumReader, self)._get_max_lengths()
-        max_lengths['num_question_words'] = self.max_question_length
-        max_lengths['num_passage_words'] = self.max_passage_length
-        max_lengths['num_option_words'] = self.max_option_length
-        max_lengths['num_options'] = self.num_options
-        return max_lengths
+        padding_lengths = super(AttentionSumReader, self)._get_padding_lengths()
+        padding_lengths['num_question_words'] = self.max_question_length
+        padding_lengths['num_passage_words'] = self.max_passage_length
+        padding_lengths['num_option_words'] = self.max_option_length
+        padding_lengths['num_options'] = self.num_options
+        return padding_lengths
 
     @overrides
-    def _set_max_lengths(self, max_lengths: Dict[str, int]):
+    def _set_padding_lengths(self, padding_lengths: Dict[str, int]):
         """
         Set the padding lengths of the model.
         """
         # TODO(nelson): superclass complains that there is no
         # num_sentence_words key, so we set it to None here.
         # We should probably patch up / organize the API.
-        max_lengths["num_sentence_words"] = None
-        super(AttentionSumReader, self)._set_max_lengths(max_lengths)
-        self.max_question_length = max_lengths['num_question_words']
-        self.max_passage_length = max_lengths['num_passage_words']
-        self.max_option_length = max_lengths['num_option_words']
-        self.num_options = max_lengths['num_options']
+        padding_lengths["num_sentence_words"] = None
+        super(AttentionSumReader, self)._set_padding_lengths(padding_lengths)
+        if self.max_question_length is None:
+            self.max_question_length = padding_lengths['num_question_words']
+        if self.max_passage_length is None:
+            self.max_passage_length = padding_lengths['num_passage_words']
+        if self.max_option_length is None:
+            self.max_option_length = padding_lengths['num_option_words']
+        if self.num_options is None:
+            self.num_options = padding_lengths['num_options']
 
     @overrides
-    def _set_max_lengths_from_model(self):
-        self.set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][1:])
+    def _set_padding_lengths_from_model(self):
+        self._set_text_lengths_from_model_input(self.model.get_input_shape_at(0)[1][1:])
         self.max_question_length = self.model.get_input_shape_at(0)[0][1]
         self.max_passage_length = self.model.get_input_shape_at(0)[1][1]
         self.num_options = self.model.get_input_shape_at(0)[2][1]

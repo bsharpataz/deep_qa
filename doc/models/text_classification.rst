@@ -9,20 +9,10 @@ Input: Text sequence
 Output: Class label
 
 
-TreeLSTMModel
--------------
+ClassificationModel
+-------------------
 
-.. automodule:: deep_qa.models.text_classification.tree_lstm_model
+.. automodule:: deep_qa.models.text_classification.classification_model
     :members:
-    :noindex:
-    :undoc-members:
-    :show-inheritance:
-
-TrueFalseModel
---------------
-
-.. automodule:: deep_qa.models.text_classification.true_false_model
-    :members:
-    :noindex:
     :undoc-members:
     :show-inheritance:
