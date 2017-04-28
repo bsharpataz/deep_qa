@@ -46,3 +46,11 @@ class SubtractMinimum(MaskedLayer):
             minimums = K.min(inputs, axis=self.axis, keepdims=True)
         normalized = inputs - minimums
         return normalized
+
+    @overrides
+    def get_config(self):
+        base_config = super(SubtractMinimum, self).get_config()
+        config = {'axis': self.axis}
+        config.update(base_config)
+        return config
+
