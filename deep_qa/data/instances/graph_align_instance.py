@@ -267,6 +267,8 @@ class IndexedGraphAlignInstance(IndexedInstance):
         # Question Input:
         # (num_options, num_option_graphlets, num_alignments, num_features)
         question_options_matrix = numpy.asarray(self.answers_indexed, dtype='float32')
+        # The background_matrix is a dummy input, included so that this instance can be used with a TupleMatcher
+        # layer and the TupleInference model.
         background_matrix = numpy.asarray([1.0], dtype="float32")
 
         # Represent the label as a class label.
