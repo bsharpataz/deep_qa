@@ -53,4 +53,3 @@ class SubtractMinimum(MaskedLayer):
         config = {'axis': self.axis}
         config.update(base_config)
         return config
-

@@ -51,9 +51,10 @@ class TupleInferenceModel(TextTrainer):
         The number of answer options/candidates.
 
     normalize_tuples_across_answers: bool, default=False
-        Whether or not to normalize each question tuple's score across the answer options.  This assumes that
-        the tuples are in the same order for all answer options.  Normalization is currently done by subtracting
-        the minimum score for a given tuple "position" from all the tuples in that position.
+        Whether or not to normalize each question tuple's score across the answer options.  This
+        assumes that the tuples are in the same order for all answer options.  Normalization is
+        currently done by subtracting the minimum score for a given tuple "position" from all the
+        tuples in that position.
 
     display_text_wrap: int, default=150
         This is used by the debug output methods to wrap long tuple strings.
@@ -70,7 +71,7 @@ class TupleInferenceModel(TextTrainer):
         self.num_tuple_slots = params.pop('num_tuple_slots', 4)
         self.num_slot_words = params.pop('num_sentence_words', 5)
         self.num_options = params.pop('num_answer_options', 4)
-        self.normalize_tuples_across_answers = params.pop('normalize_across_answers', False)
+        self.normalize_tuples_across_answers = params.pop('normalize_tuples_across_answers', False)
         self.display_text_wrap = params.pop('display_text_wrap', 150)
         self.display_num_tuples = params.pop('display_num_tuples', 5)
         tuple_matcher_params = params.pop('tuple_matcher', {})
