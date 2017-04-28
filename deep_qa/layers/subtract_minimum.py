@@ -1,10 +1,11 @@
-from keras.layers import Layer
 from keras import backend as K
 
-class SubtractMinimum(Layer):
+from deep_qa.layers.masked_layer import MaskedLayer
+
+class SubtractMinimum(MaskedLayer):
     '''
-    This layer is used to normalize across a tensor axis.  Normalization is done by finding the minimum value across
-    the specified axis, and then subtracting that value from all values (again, across the spcified axis).
+    This layer is used to normalize across a tensor axis.  Normalization is done by finding the minimum value
+    across the specified axis, and then subtracting that value from all values (again, across the spcified axis).
     '''
     def __init__(self, axis, **kwargs):
         self.axis = axis
@@ -14,7 +15,7 @@ class SubtractMinimum(Layer):
         # Add the trainable weight variable for the noise parameter.
         super(SubtractMinimum, self).build(input_shape)
 
-    def get_output_shape_for(self, input_shape):
+    def get_output_shape_for(self, input_shape): # pylint: disable=no-self-use
         return input_shape
 
     def compute_mask(self, inputs, mask=None):
@@ -26,14 +27,14 @@ class SubtractMinimum(Layer):
         tile_dimensions[self.axis] = axis_dimension
 
         if mask is not None:
-            # Handle the case where the mask is one-dimension smaller than the inputs to mask all values for that
-            # masked vector.
-            if K.ndim(mask) == K.ndim(inputs) - 1:
-                mask = K.expand_dims(mask)
-                mask_tile_dimensions = [1] * K.ndim(inputs)
-                mask_tile_dimensions[-1] = K.int_shape(inputs)[-1]
-                mask = K.tile(mask, mask_tile_dimensions)
-            # Make all masked values very large
+            # # Handle the case where the mask is one-dimension smaller than the inputs to mask all values for that
+            # # masked vector.
+            # if K.ndim(mask) == K.ndim(inputs) - 1:
+            #     mask = K.expand_dims(mask)
+            #     mask_tile_dimensions = [1] * K.ndim(inputs)
+            #     mask_tile_dimensions[-1] = K.int_shape(inputs)[-1]
+            #     mask = K.tile(mask, mask_tile_dimensions)
+            # # Make all masked values very large
             mask_flipped_and_scaled = K.cast(K.equal(mask, K.zeros_like(mask)), "float32") * 1000000.0
             dim_1_minimums = K.min(inputs + mask_flipped_and_scaled, axis=self.axis, keepdims=True)
         else:
