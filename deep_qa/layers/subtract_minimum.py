@@ -3,7 +3,8 @@ from keras import backend as K
 
 class SubtractMinimum(Layer):
     '''
-
+    This layer is used to normalize across a tensor axis.  Normalization is done by finding the minimum value across
+    the specified axis, and then subtracting that value from all values (again, across the spcified axis).
     '''
     def __init__(self, axis, **kwargs):
         self.axis = axis
@@ -25,7 +26,15 @@ class SubtractMinimum(Layer):
         tile_dimensions[self.axis] = axis_dimension
 
         if mask is not None:
-            mask_flipped_and_scaled = K.cast(K.equal(mask, K.zeros_like(mask)), "float32") * 1000.0
+            # Handle the case where the mask is one-dimension smaller than the inputs to mask all values for that
+            # masked vector.
+            if K.ndim(mask) == K.ndim(inputs) - 1:
+                mask = K.expand_dims(mask)
+                mask_tile_dimensions = [1] * K.ndim(inputs)
+                mask_tile_dimensions[-1] = K.int_shape(inputs)[-1]
+                mask = K.tile(mask, mask_tile_dimensions)
+            # Make all masked values very large
+            mask_flipped_and_scaled = K.cast(K.equal(mask, K.zeros_like(mask)), "float32") * 1000000.0
             dim_1_minimums = K.min(inputs + mask_flipped_and_scaled, axis=self.axis, keepdims=True)
         else:
             dim_1_minimums = K.min(inputs, axis=self.axis, keepdims=True)
@@ -33,20 +42,3 @@ class SubtractMinimum(Layer):
         minimums = K.tile(dim_1_minimums, tile_dimensions)
         normalized = inputs - minimums
         return normalized
-
-    # def call(self, inputs, mask=None):
-    #     axis_dimension = K.int_shape(inputs)[self.axis]
-    #     tile_dimensions = [1] * K.ndim(inputs)
-    #     tile_dimensions[self.axis] = axis_dimension
-    #
-    #     if mask is not None:
-    #         mask_flipped_and_scaled = K.cast(K.equal(mask, K.zeros_like(mask)), "float32") * 1000.0
-    #         zeros_in_inputs_scaled_up = K.cast(K.equal(inputs, K.zeros_like(inputs)), "float32") * 1000.0
-    #         dim_1_minimums = K.min(inputs + zeros_in_inputs_scaled_up + mask_flipped_and_scaled, axis=self.axis, keepdims=True)
-    #     else:
-    #         zeros_in_inputs_scaled_up = K.cast(K.equal(inputs, K.zeros_like(inputs)), "float32") * 1000.0
-    #         dim_1_minimums = K.min(inputs + zeros_in_inputs_scaled_up, axis=self.axis, keepdims=True)
-    #
-    #     minimums = K.tile(dim_1_minimums, tile_dimensions)
-    #     normalized = inputs - minimums
-    #     return normalized
