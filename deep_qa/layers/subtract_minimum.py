@@ -2,6 +2,7 @@ from keras import backend as K
 from overrides import overrides
 
 from deep_qa.layers.masked_layer import MaskedLayer
+from deep_qa.tensors.backend import VERY_LARGE_NUMBER
 
 class SubtractMinimum(MaskedLayer):
     '''
@@ -39,8 +40,9 @@ class SubtractMinimum(MaskedLayer):
     @overrides
     def call(self, inputs, mask=None):
         if mask is not None:
-            # Make all masked values very large.
-            mask_flipped_and_scaled = K.cast(K.equal(mask, 0), "float32") * K.max(inputs)
+            mask_value = False if K.dtype(mask) == 'bool' else 0
+            # Make sure masked values don't affect the input, by adding a very large number.
+            mask_flipped_and_scaled = K.cast(K.equal(mask, mask_value), "float32") * VERY_LARGE_NUMBER
             minimums = K.min(inputs + mask_flipped_and_scaled, axis=self.axis, keepdims=True)
         else:
             minimums = K.min(inputs, axis=self.axis, keepdims=True)
