@@ -73,7 +73,7 @@ class TestGraphAlignInstance(DeepQaTestCase):
                 assert len(answer_graphlet) == num_alignments
                 for alignment in answer_graphlet:
                     assert len(alignment) == num_features
-    #
+
     def test_as_training_data_produces_correct_numpy_arrays(self):
         padding_lengths = {'num_graphlets': 2,
                            'num_alignments': 2,

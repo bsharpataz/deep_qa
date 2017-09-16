@@ -40,9 +40,6 @@ class GraphAlignInstance(TextInstance):
         super(GraphAlignInstance, self).__init__(label, index)
         self.answer_graphlets = answer_graphlets
         self.question_text = question_text
-        split_question = re.sub("\([ABCD]\)", "<>", self.question_text)
-        self.question_only_text = split_question[0].strip()
-        self.answer_texts = [text.strip() for text in split_question[1:]]
 
     @overrides
     def words(self) -> Dict[str, List[str]]:
